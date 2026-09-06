@@ -2,31 +2,30 @@
  * Root component. Composition order (outer -> inner):
  *   ThemeProvider   - loads the active ThemeBundle, applies tokens as CSS vars + theme.css
  *   SoundProvider   - preloads theme sounds, exposes useSound()
- *   InputProvider   - keyboard + gamepad -> FocusEngine actions
  *   FocusProvider   - spatial focus engine (D-pad navigation)
- *   Background      - image / video / shader wallpaper + colour bleed + blur
- *   Shell           - NavBar + active screen + overlays (launch, toast)
+ *   InputProvider   - keyboard + gamepad -> focus engine actions
+ *   Shell           - background, nav bar, hero, active screen, overlays
  *
- * STATUS: stub - owner ui-shell agent composes the real tree once providers exist.
+ * The ordering matters: InputProvider needs both the focus engine and sounds, so it sits inside
+ * both; the focus engine needs no theme, but sound does, so the theme is outermost.
  */
 
-import { useEffect } from 'react';
+import { Shell } from '@/components/Shell';
+import { FocusProvider } from '@/focus';
+import { InputProvider } from '@/input';
+import { SoundProvider } from '@/sound';
+import { ThemeProvider } from '@/theme';
 
-import { api } from '@/bridge';
-
-export default function App() {
-  useEffect(() => {
-    // Reveal the (hidden) native window after the first paint.
-    const id = requestAnimationFrame(() => void api.shellReady());
-    return () => cancelAnimationFrame(id);
-  }, []);
-
+export default function App(): React.JSX.Element {
   return (
-    <div className="aura-root" data-screen="home">
-      <main className="aura-boot">
-        <h1>Aura Shell</h1>
-        <p>UI layer not composed yet.</p>
-      </main>
-    </div>
+    <ThemeProvider>
+      <SoundProvider>
+        <FocusProvider>
+          <InputProvider>
+            <Shell />
+          </InputProvider>
+        </FocusProvider>
+      </SoundProvider>
+    </ThemeProvider>
   );
 }

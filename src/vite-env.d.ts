@@ -8,3 +8,8 @@ declare module '*.css?raw' {
   const src: string;
   export default src;
 }
+
+declare module '*.wav?url' {
+  const src: string;
+  export default src;
+}

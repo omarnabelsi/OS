@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # The UI half is fast and platform-independent, so it gates everything else.
+  ui:
+    name: UI (typecheck, test, build)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Validate the bundled theme
+        run: npm run theme:validate
+
+      - name: Build the UI
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: dist/
+          retention-days: 7
+
+  # Rust needs the WebView2 headers and the MSVC toolchain, both of which
+  # windows-latest already provides.
+  core:
+    name: Core (fmt, clippy, test)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+  # Builds the real app and proves it boots: `--smoke` opens the window, waits, prints a
+  # marker and exits. It catches the failures a unit test never will - a missing Tauri
+  # capability, a broken asset path, a theme that will not load.
+  smoke:
+    name: Smoke (build and launch)
+    runs-on: windows-latest
+    needs: [ui, core]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: npm ci
+
+      - name: Build (debug)
+        run: cargo build --workspace
+
+      - name: Build the frontend
+        run: npm run build
+
+      - name: Launch with --smoke
+        shell: pwsh
+        run: |
+          $exe = "target/debug/aura-shell.exe"
+          if (-not (Test-Path $exe)) { throw "$exe was not built" }
+          $out = & $exe --smoke 8 --data-dir "$env:RUNNER_TEMP/aura-ci" 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'AURA_SMOKE_OK') { throw 'the shell did not report a clean start' }

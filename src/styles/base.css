@@ -5,6 +5,9 @@
  * layout; colour, radius, blur, motion and spacing MUST come from tokens so themes control them.
  */
 @import 'tailwindcss';
+/* Shell layout. Loaded after the tokens below so it can rely on them; the active theme's
+   theme.css is injected after both by ThemeProvider. */
+@import './shell.css';
 
 :root {
   /* Fallback tokens = aura-default. Keep in sync with themes/aura-default/tokens.json. */
