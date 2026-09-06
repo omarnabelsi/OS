@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Aura Shell",
+  "version": "../package.json",
+  "identifier": "com.aura.shell",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline' asset: http://asset.localhost; font-src 'self' asset: http://asset.localhost data:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost; script-src 'self'; worker-src 'self' blob:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["$APPDATA/**", "$APPLOCALDATA/**", "$APPCACHE/**", "$RESOURCE/**", "$HOME/**", "**"],
+          "deny": []
+        }
+      }
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Aura Shell",
+        "width": 1280,
+        "height": 720,
+        "minWidth": 960,
+        "minHeight": 540,
+        "decorations": false,
+        "fullscreen": false,
+        "resizable": true,
+        "visible": false,
+        "center": true,
+        "focus": true,
+        "shadow": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Aura Shell",
+    "category": "Utility",
+    "shortDescription": "Console-style, themeable shell for Windows",
+    "longDescription": "Aura Shell is a fullscreen, gamepad-friendly, deeply themeable launcher and shell layer that sits on top of Windows.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../themes/": "themes/"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English"]
+      },
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }
+    }
+  }
+}

@@ -1,0 +1,92 @@
+/*
+ * Base stylesheet. Design tokens are CSS custom properties on :root; the ThemeProvider
+ * overwrites them from the active theme's tokens.json (group.key -> --group-key), and the
+ * theme's own theme.css is injected after this file. Tailwind utilities are available for
+ * layout; colour, radius, blur, motion and spacing MUST come from tokens so themes control them.
+ */
+@import 'tailwindcss';
+
+:root {
+  /* Fallback tokens = aura-default. Keep in sync with themes/aura-default/tokens.json. */
+  --color-background: #07080c;
+  --color-surface: rgba(255, 255, 255, 0.06);
+  --color-surface-strong: rgba(255, 255, 255, 0.12);
+  --color-text: #f4f6fb;
+  --color-text-muted: rgba(244, 246, 251, 0.62);
+  --color-accent: #6ee7ff;
+  --color-accent-contrast: #04121a;
+  --color-focus-ring: #ffffff;
+  --color-danger: #ff5c7a;
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 28px;
+  --radius-tile: 18px;
+
+  --blur-background: 24px;
+  --blur-surface: 18px;
+
+  --spacing-edge: 64px;
+  --spacing-gutter: 24px;
+  --spacing-row: 40px;
+
+  --easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --easing-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-slow: 420ms;
+
+  --tile-width: 220px;
+  --tile-aspect: 2 / 3;
+  --tile-focus-scale: 1.08;
+  --tile-gap: 20px;
+
+  --font-ui: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-ui);
+
+  /* Runtime, not theme: set by the UI. */
+  --ui-scale: 1;
+  --accent-bleed: var(--color-accent);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+.aura-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-size: calc(16px * var(--ui-scale));
+}
+
+.aura-boot {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+*:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}

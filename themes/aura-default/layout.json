@@ -1,0 +1,16 @@
+{
+  "regions": ["background", "navBar", "hero", "tiles", "overlay"],
+  "navBar": {
+    "position": "top",
+    "items": ["home", "games", "apps", "files", "media", "settings"]
+  },
+  "home": {
+    "rows": [
+      { "id": "recent", "title": "Recently played", "filter": { "sort": "last_played", "limit": 12 } },
+      { "id": "favourites", "title": "Favourites", "filter": { "favouritesOnly": true } },
+      { "id": "games", "title": "All games", "filter": { "type": "game" } }
+    ]
+  },
+  "background": { "kind": "shader", "id": "aurora" },
+  "fallbackBackground": { "kind": "image", "path": "assets/wallpapers/aurora.svg" }
+}

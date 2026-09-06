@@ -1,0 +1,43 @@
+[package]
+name = "aura-core"
+description = "Aura Shell core services: library, artwork, process, input, theme, settings. No UI, no Tauri."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "aura_core"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rusqlite = { version = "0.40", features = ["bundled", "serde_json"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls", "webpki-roots", "gzip"] }
+directories = "6"
+sha2 = "0.11"
+hex = "0.4"
+sysinfo = "0.39"
+gilrs = "0.11"
+semver = "1"
+parking_lot = "0.12"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Shell",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_ProcessStatus",
+] }
+
+[dev-dependencies]
+tempfile = "3"

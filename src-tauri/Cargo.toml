@@ -1,0 +1,32 @@
+[package]
+name = "aura-shell"
+description = "Aura Shell - console-style, themeable shell for Windows (shell host + IPC bridge)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+default-run = "aura-shell"
+
+[lib]
+name = "aura_shell_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "aura-shell"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+aura-core = { path = "../crates/aura-core" }
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-log = "2"
+tauri-plugin-opener = "2"
+log = "0.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }

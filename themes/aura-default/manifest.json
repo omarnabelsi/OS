@@ -1,0 +1,22 @@
+{
+  "id": "aura-default",
+  "name": "Aura",
+  "author": "Aura Shell",
+  "version": "1.0.0",
+  "description": "The reference Aura Shell theme: a dark navy ground, a cyan accent and slow aurora light. Every token matches the built-in fallbacks, so it is also the starting point for new themes.",
+  "screenshots": [],
+  "minAppVersion": "0.1.0",
+  "engine": "aura-theme/1",
+  "sounds": {
+    "move": "sounds/move.wav",
+    "select": "sounds/select.wav",
+    "back": "sounds/back.wav",
+    "launch": "sounds/launch.wav",
+    "error": "sounds/error.wav"
+  },
+  "shaders": {
+    "aurora": "shaders/aurora.frag",
+    "nebula": "shaders/nebula.frag"
+  },
+  "hasCss": true
+}
