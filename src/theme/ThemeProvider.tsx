@@ -22,7 +22,7 @@ import type { ThemeBundle } from '@/bridge';
 import { errorMessage } from '@/store/errors';
 import { useSettingsStore } from '@/store';
 
-import { cssVariables } from './tokens';
+import { cssVariables, focusScaleFrom } from './tokens';
 
 const STYLE_ELEMENT_ID = 'aura-theme-css';
 
@@ -30,6 +30,12 @@ export interface ThemeContextValue {
   bundle: ThemeBundle | null;
   loading: boolean;
   error: string | null;
+  /**
+   * The active `tile.focusScale`. Resolved once here rather than read from computed style in
+   * every tile, and shared so the value animating the tile is the same one `--tile-focus-scale`
+   * gives the CSS that reserves room for it.
+   */
+  focusScale: number;
   reload(): Promise<void>;
 }
 
@@ -108,9 +114,11 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.
     else root.removeAttribute('data-reduce-motion');
   }, [settings?.reduceMotion]);
 
+  const focusScale = useMemo(() => focusScaleFrom(bundle?.tokens), [bundle?.tokens]);
+
   const value = useMemo<ThemeContextValue>(
-    () => ({ bundle, loading, error, reload: () => load(themeId) }),
-    [bundle, loading, error, load, themeId],
+    () => ({ bundle, loading, error, focusScale, reload: () => load(themeId) }),
+    [bundle, loading, error, focusScale, load, themeId],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

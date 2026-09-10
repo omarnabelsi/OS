@@ -18,7 +18,19 @@ export type NavAction =
   | 'prevScreen'
   | 'menu'
   | 'search'
-  | 'favourite';
+  | 'favourite'
+  /**
+   * Move focus *between* windows.
+   *
+   * Deliberately its own action rather than something directional movement does. The focus
+   * engine is spatial, and a tile in a background window is geometrically "to the right of" one
+   * in the foreground; asking `right` to sometimes leave the window cannot be made predictable.
+   * See docs/RISKS.md R11.
+   */
+  | 'nextWindow'
+  | 'prevWindow'
+  /** Hop between the desktop and the focused window (and, from phase 5, the taskbar). */
+  | 'cycleRegion';
 
 /** Directions auto-repeat when held; discrete actions fire once per press. */
 export const REPEATABLE: ReadonlySet<NavAction> = new Set<NavAction>(['up', 'down', 'left', 'right']);
@@ -37,10 +49,26 @@ export interface KeyLike {
   ctrlKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  shiftKey?: boolean;
 }
 
 export function actionForKey(event: KeyLike): NavAction | null {
-  // Leave OS and app shortcuts alone.
+  /*
+   * The only chords the shell claims.
+   *
+   * Not `Alt+Tab`: Windows takes that before any application sees it, and a borderless
+   * fullscreen shell is no exception. `Ctrl+Tab` is the same gesture that switches tabs
+   * everywhere else, so it is the closest thing to muscle memory available. `F6` cycles panes,
+   * matching the Windows convention.
+   */
+  if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'Tab') {
+    return event.shiftKey ? 'prevWindow' : 'nextWindow';
+  }
+  if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'F6') {
+    return 'cycleRegion';
+  }
+
+  // Every other modified chord stays with the OS or the browser.
   if (event.ctrlKey || event.altKey || event.metaKey) return null;
 
   switch (event.key) {
@@ -111,12 +139,21 @@ export function actionForButton(button: GamepadButton): NavAction | null {
       return 'prevScreen';
     case 'right_shoulder':
       return 'nextScreen';
+    // The triggers take window switching: the shoulders already move between screens, and
+    // stacking both on one pair of buttons would be unreadable.
+    case 'left_trigger':
+      return 'prevWindow';
+    case 'right_trigger':
+      return 'nextWindow';
+    // Left stick click hops between the desktop and the focused window.
+    case 'left_stick':
+      return 'cycleRegion';
     case 'select':
       return 'search';
     case 'start':
       return 'menu';
     default:
-      // Guide, sticks and analog triggers are deliberately unbound in V1.
+      // The guide button and the right stick stay unbound.
       return null;
   }
 }

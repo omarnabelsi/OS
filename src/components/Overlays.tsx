@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { api } from '@/bridge';
+import type { EntryType } from '@/bridge';
 import { useFocus, useFocusable } from '@/focus';
 import { useSound } from '@/sound';
 import { useLibraryStore, useUiStore, type OverlayId } from '@/store';
@@ -96,6 +97,8 @@ interface PanelButtonProps {
   label: string;
   icon?: IconName;
   danger?: boolean;
+  /** Marks the current choice when the button is one of a set (see the Add overlay's kind picker). */
+  selected?: boolean;
   onActivate(): void;
 }
 
@@ -105,6 +108,7 @@ function PanelButton({
   label,
   icon,
   danger,
+  selected,
   onActivate,
 }: PanelButtonProps): React.JSX.Element {
   const { ref, props } = useFocusable({
@@ -119,6 +123,8 @@ function PanelButton({
       type="button"
       className="aura-panel-button"
       data-danger={danger || undefined}
+      data-selected={selected || undefined}
+      aria-pressed={selected === undefined ? undefined : selected}
       {...props}
     >
       {icon ? <Icon name={icon} size="1.1em" /> : null}
@@ -260,10 +266,14 @@ function AddEntryOverlay(): React.JSX.Element {
   const setOverlay = useUiStore((s) => s.setOverlay);
   const addManual = useLibraryStore((s) => s.addManual);
   const pushToast = useUiStore((s) => s.pushToast);
+  // Whichever screen opened the overlay decides the default; the picker below lets the user
+  // correct it, so an entry point that guesses wrong is never a dead end.
+  const addEntryType = useUiStore((s) => s.addEntryType);
   const play = useSound();
 
   const [path, setPath] = useState('');
   const [name, setName] = useState('');
+  const [type, setType] = useState<EntryType>(addEntryType === 'game' ? 'game' : 'app');
 
   const submit = async () => {
     if (!path.trim()) {
@@ -271,10 +281,10 @@ function AddEntryOverlay(): React.JSX.Element {
       pushToast('warning', 'Choose a program first');
       return;
     }
-    const item = await addManual({ path: path.trim(), name: name.trim() || null, type: 'app' });
+    const item = await addManual({ path: path.trim(), name: name.trim() || null, type });
     if (item) {
       play('select');
-      pushToast('info', `Added ${item.name}`);
+      pushToast('info', `Added ${item.name} to ${item.type === 'game' ? 'Games' : 'Apps'}`);
       setOverlay(null);
     }
   };
@@ -318,6 +328,28 @@ function AddEntryOverlay(): React.JSX.Element {
           onChange={(e) => setName(e.target.value)}
         />
       </label>
+
+      <div className="aura-field">
+        <span>Show it under</span>
+        <div className="aura-field-choices">
+          <PanelButton
+            overlayId="addEntry"
+            id="kind-game"
+            label="Games"
+            icon="games"
+            selected={type === 'game'}
+            onActivate={() => setType('game')}
+          />
+          <PanelButton
+            overlayId="addEntry"
+            id="kind-app"
+            label="Apps"
+            icon="apps"
+            selected={type === 'app'}
+            onActivate={() => setType('app')}
+          />
+        </div>
+      </div>
 
       <div className="aura-panel-actions">
         <PanelButton

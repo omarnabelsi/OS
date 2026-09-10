@@ -22,7 +22,14 @@ export type IconName =
   | 'back'
   | 'hidden'
   | 'image'
-  | 'trash';
+  | 'trash'
+  | 'list'
+  | 'clock'
+  | 'battery'
+  | 'pin'
+  | 'palette'
+  | 'folder'
+  | 'desktop';
 
 const PATHS: Record<IconName, React.JSX.Element> = {
   home: <path d="M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5" />,
@@ -81,6 +88,35 @@ const PATHS: Record<IconName, React.JSX.Element> = {
     </>
   ),
   trash: <path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l1 12.5h9l1-12.5M10.5 10.5v6M13.5 10.5v6" />,
+  list: <path d="M4 6.5h.01M4 12h.01M4 17.5h.01M8.5 6.5H20M8.5 12H20M8.5 17.5H20" />,
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.2V12l3.2 2" />
+    </>
+  ),
+  battery: (
+    <>
+      <rect x="2.5" y="8" width="16" height="8" rx="2.2" />
+      <path d="M21 11v2" />
+    </>
+  ),
+  pin: <path d="M9 3.5h6l-.8 5.2 3.3 3.1H6.5l3.3-3.1zM12 11.8V20.5" />,
+  palette: (
+    <>
+      <path d="M12 3.2a8.8 8.8 0 0 0 0 17.6c1.3 0 1.9-.9 1.9-1.8 0-1.3-1.1-1.6-1.1-2.7 0-.8.7-1.5 1.6-1.5h1.4A4.4 4.4 0 0 0 20.8 10c0-3.8-3.9-6.8-8.8-6.8Z" />
+      <circle cx="8" cy="9.5" r="1.1" />
+      <circle cx="12" cy="7.5" r="1.1" />
+      <circle cx="16" cy="9.8" r="1.1" />
+    </>
+  ),
+  folder: <path d="M3 7.2A2.2 2.2 0 0 1 5.2 5h3.4l2 2.4h8.2A2.2 2.2 0 0 1 21 9.6v7.2a2.2 2.2 0 0 1-2.2 2.2H5.2A2.2 2.2 0 0 1 3 16.8Z" />,
+  desktop: (
+    <>
+      <rect x="2.5" y="4" width="19" height="12.5" rx="2.2" />
+      <path d="M8.5 20h7M12 16.5V20" />
+    </>
+  ),
 };
 
 export interface IconProps {

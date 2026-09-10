@@ -257,8 +257,13 @@ pub fn is_tool(appid: &str, name: &str) -> bool {
         return true;
     }
     let lower = name.to_lowercase();
-    // `starts_with` for Proton so a game like "Protonwar" is not swallowed.
-    lower.starts_with("proton")
+    // Steam's Proton tools are always "Proton" followed by a separator ("Proton 9.0",
+    // "Proton Experimental", "Proton - Hotfix"). A bare `starts_with("proton")` also matched
+    // "Protonwar", a real game, and hid it from the library - so require a word boundary.
+    let is_proton = lower
+        .strip_prefix("proton")
+        .is_some_and(|rest| !rest.starts_with(|c: char| c.is_alphanumeric()));
+    is_proton
         || lower.contains("redistributable")
         || lower.contains("steam linux runtime")
         || lower.contains("steamworks common")
@@ -304,6 +309,11 @@ mod tests {
         assert!(is_tool("3", "Microsoft Visual C++ Redistributable"));
         assert!(!is_tool("620", "Portal 2"));
         assert!(!is_tool("620", "Protonwar"), "substring match must not swallow real games");
+        // The separator, not just the prefix, is what marks a Proton tool.
+        assert!(is_tool("4", "Proton"), "the bare name is the tool itself");
+        assert!(is_tool("5", "Proton - Experimental"));
+        assert!(is_tool("6", "Proton Hotfix"));
+        assert!(!is_tool("7", "Protonwar 2"), "a game whose first word merely begins with proton");
     }
 
     #[test]

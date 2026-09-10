@@ -1,5 +1,8 @@
 /**
- * Theme sounds. `useSound()` returns a `play(name)` that is safe to call from anywhere, on every
+ * Theme sounds - short interface blips, fired one per interaction. This is the whole of the app's
+ * audio: there is no music, soundtrack or ambience anywhere, and nothing here loops.
+ *
+ * `useSound()` returns a `play(name)` that is safe to call from anywhere, on every
  * focus change, without the caller thinking about volume, muting or preloading.
  *
  * Each slot keeps one decoded <audio> element and plays a lightweight clone, so a fast run along
@@ -15,6 +18,15 @@ import { useSettingsStore } from '@/store';
 import { useTheme } from '@/theme';
 
 export type SoundName = 'move' | 'select' | 'back' | 'launch' | 'error';
+
+/**
+ * The same five slots at runtime, so the preload below can reject anything else.
+ *
+ * These short interface sounds are the only audio the app plays: there is no music, soundtrack or
+ * ambience slot, and nothing here loops or plays unprompted. `theme::loader` already drops unknown
+ * slots; this is the UI half of that rule, so it holds whatever a bridge hands over.
+ */
+const SOUND_NAMES: readonly SoundName[] = ['move', 'select', 'back', 'launch', 'error'];
 
 export type PlaySound = (name: SoundName) => void;
 
@@ -36,6 +48,8 @@ export function SoundProvider({ children }: { children: ReactNode }): React.JSX.
     if (!bundle) return;
 
     for (const [name, path] of Object.entries(bundle.sounds)) {
+      // An unrecognised slot is never played, so it must not be fetched either.
+      if (!(SOUND_NAMES as readonly string[]).includes(name)) continue;
       const url = assetUrl(path);
       if (!url) continue;
       const audio = new Audio(url);

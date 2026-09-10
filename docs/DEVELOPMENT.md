@@ -41,7 +41,7 @@ to test scanning, launching, hotkeys or window behaviour.
 Useful flags (`src-tauri/src/shell_host/args.rs`):
 
 ```sh
-cargo run -- --windowed                 # 1280x720 window instead of fullscreen
+cargo run -- --windowed                 # a window sized to the monitor, not fullscreen
 cargo run -- --data-dir C:/tmp/aura     # a throwaway database
 cargo run -- --smoke 8                  # start, wait 8s, print AURA_SMOKE_OK, exit
 ```
@@ -116,6 +116,12 @@ live rects on every move; that is intentional and cheap enough.
 
 **Sounds fail silently and must stay that way.** Browsers block audio until the first user
 gesture. A missing or blocked sound must never break navigation.
+
+**The app plays no music.** The five short interface sounds in `src/sound` are the only audio
+Aura Shell ever produces. There is no soundtrack, no ambience and no media playback: video
+wallpapers are hard-muted in `Background.tsx`, `WallpaperSetting::Video` has no `muted` flag for a
+setting or a theme to flip, and there is no volume control for a music track because there is no
+music track. Anything that would add a second audio source is a product decision, not a patch.
 
 **Assets need `assetUrl()`.** The core returns absolute paths; only `assetUrl()` knows how to turn
 one into something the webview will load. Components must not import `@tauri-apps/*` directly.

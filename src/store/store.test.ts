@@ -237,18 +237,35 @@ describe('settings store', () => {
 describe('ui store', () => {
   it('cycles screens in both directions and wraps', () => {
     const { nextScreen, prevScreen, setScreen } = useUiStore.getState();
+    // Window items (Settings) are not screens, so the cycle walks only the rest.
+    const screens = NAV_ITEMS.filter((n) => n.opens === undefined);
     expect(useUiStore.getState().screen).toBe('home');
 
     nextScreen();
-    expect(useUiStore.getState().screen).toBe(NAV_ITEMS[1]!.id);
+    expect(useUiStore.getState().screen).toBe(screens[1]!.id);
 
-    // From the last item, moving forward wraps back to the first.
-    setScreen(NAV_ITEMS[NAV_ITEMS.length - 1]!.id);
+    // From the last screen, moving forward wraps back to the first.
+    setScreen(screens[screens.length - 1]!.id);
     nextScreen();
     expect(useUiStore.getState().screen).toBe('home');
 
     prevScreen();
-    expect(useUiStore.getState().screen).toBe(NAV_ITEMS[NAV_ITEMS.length - 1]!.id);
+    expect(useUiStore.getState().screen).toBe(screens[screens.length - 1]!.id);
+  });
+
+  it('never cycles onto Settings, which opens as a window rather than a screen', () => {
+    const { nextScreen, prevScreen } = useUiStore.getState();
+    const visited = new Set<string>();
+    for (let i = 0; i < NAV_ITEMS.length * 2; i++) {
+      nextScreen();
+      visited.add(useUiStore.getState().screen);
+    }
+    for (let i = 0; i < NAV_ITEMS.length * 2; i++) {
+      prevScreen();
+      visited.add(useUiStore.getState().screen);
+    }
+    expect(visited.has('settings')).toBe(false);
+    expect(visited.has('media')).toBe(true);
   });
 
   it('expires toasts and caps how many are shown', () => {

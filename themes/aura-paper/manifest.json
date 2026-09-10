@@ -1,0 +1,19 @@
+{
+  "id": "aura-paper",
+  "name": "Paper",
+  "author": "Aura Shell",
+  "version": "1.0.0",
+  "description": "A light, quiet desk: warm paper, ink text, a terracotta accent, square windows and a floating taskbar. The second bundled theme, and the proof that a theme is data - it ships its own folder shapes, wallpaper and CSS, and no component knows it exists.",
+  "screenshots": [],
+  "minAppVersion": "0.1.0",
+  "engine": "aura-theme/1",
+  "sounds": {
+    "move": "sounds/move.wav",
+    "select": "sounds/select.wav",
+    "back": "sounds/back.wav",
+    "launch": "sounds/launch.wav",
+    "error": "sounds/error.wav"
+  },
+  "shaders": {},
+  "hasCss": true
+}

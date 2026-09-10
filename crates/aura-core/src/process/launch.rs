@@ -1,12 +1,12 @@
 //! Turn a `LaunchSpec` into a running process.
 //!
-//! - `Exe`   : `std::process::Command` with cwd and null stdio, so the game never inherits our
-//!             handles and never blocks on a pipe nobody reads.
-//! - `Uri`   : handed to the shell. On Windows that is `explorer.exe <uri>`, which resolves
-//!             `steam://`, `com.epicgames.launcher://` and friends exactly like ShellExecuteW
-//!             does - without an `unsafe` FFI call whose handle types shift between
-//!             `windows` crate releases. explorer exits immediately, so there is no pid to own.
-//! - `Shell` : the same path, which covers `shell:AppsFolder\Package!App` and `.lnk` files.
+//! - `Exe`: `std::process::Command` with cwd and null stdio, so the game never inherits our
+//!   handles and never blocks on a pipe nobody reads.
+//! - `Uri`: handed to the shell. On Windows that is `explorer.exe <uri>`, which resolves
+//!   `steam://`, `com.epicgames.launcher://` and friends exactly like ShellExecuteW does -
+//!   without an `unsafe` FFI call whose handle types shift between `windows` crate releases.
+//!   explorer exits immediately, so there is no pid to own.
+//! - `Shell`: the same path, which covers `shell:AppsFolder\Package!App` and `.lnk` files.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

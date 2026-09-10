@@ -20,6 +20,7 @@
 pub mod artwork;
 pub mod config;
 pub mod db;
+pub mod desktop;
 pub mod error;
 pub mod events;
 pub mod files;
@@ -37,10 +38,13 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 pub use config::paths::Paths;
-pub use config::settings::{Settings, TileSize, WallpaperSetting};
+pub use config::settings::{
+    Settings, TaskbarAlignment, TaskbarPosition, TileSize, WallpaperSetting,
+};
 pub use error::{CoreError, Result};
 pub use events::{CoreEvent, EventSink};
 pub use model::*;
+pub use system::SystemStatus;
 
 /// The single entry point the shell host talks to. Always held as `Arc<Core>`.
 pub struct Core {
@@ -59,8 +63,18 @@ impl Core {
     pub fn new(paths: Paths, sink: Arc<dyn EventSink>) -> Result<Arc<Self>> {
         paths.ensure()?;
         let db = db::Db::open(&paths.db_path)?;
+        // Before the schema moves, not after. docs/RISKS.md R8: playtime, favourites and
+        // artwork overrides exist nowhere else.
+        if let Some(backup) = db.backup_before_migration(&paths.db_path)? {
+            tracing::info!("pre-migration backup at {}", backup.display());
+        }
         db.migrate()?;
-        let settings = db::settings::load(&db)?.unwrap_or_default();
+        let mut settings = db::settings::load(&db)?.unwrap_or_default();
+        // One-time repair for installs carrying the old, unregistrable exit hotkey.
+        if config::settings::repair_exit_hotkey(&mut settings) {
+            tracing::warn!("stored exit hotkey was OS-reserved; reset to {}", settings.exit_hotkey);
+            db::settings::save(&db, &settings)?;
+        }
         let http = reqwest::blocking::Client::builder()
             .user_agent(concat!("AuraShell/", env!("CARGO_PKG_VERSION")))
             .timeout(std::time::Duration::from_secs(30))
@@ -124,8 +138,16 @@ impl Core {
         library::get(self, id)
     }
 
-    pub fn add_manual_entry(&self, input: AddManualEntryInput) -> Result<LibraryItem> {
-        library::add_manual(self, input)
+    /// Add a hand-picked program.
+    ///
+    /// A manual entry has no store id, so the only artwork that exists for it is the icon inside
+    /// its own executable. That fetch is started here rather than inside `library::add_manual` so
+    /// the library service stays free of background work, and so the user does not have to find
+    /// "Find artwork" in the item menu to see a tile.
+    pub fn add_manual_entry(self: &Arc<Self>, input: AddManualEntryInput) -> Result<LibraryItem> {
+        let item = library::add_manual(self, input)?;
+        artwork::start_fetch(self.clone(), item.entry.id.clone(), false);
+        Ok(item)
     }
 
     pub fn update_entry(&self, id: &str, patch: UpdateEntryPatch) -> Result<LibraryItem> {
@@ -164,6 +186,101 @@ impl Core {
     /// `process://exited` when the process tree is gone.
     pub fn launch_entry(self: &Arc<Self>, entry_id: &str) -> Result<LaunchSession> {
         process::launch_entry(self.clone(), entry_id)
+    }
+
+    // ---- desktop -------------------------------------------------------------------------
+
+    /// Create the default arrangement if this install has none. Safe on every start.
+    pub fn seed_desktop(&self) -> Result<Option<Desktop>> {
+        desktop::seed_if_empty(self)
+    }
+
+    pub fn list_desktops(&self) -> Result<Vec<Desktop>> {
+        desktop::list_desktops(self)
+    }
+
+    pub fn get_desktop(&self, id: &str) -> Result<Option<Desktop>> {
+        desktop::get_desktop(self, id)
+    }
+
+    pub fn create_desktop(&self, name: &str) -> Result<Desktop> {
+        desktop::create_desktop(self, name)
+    }
+
+    pub fn update_desktop(&self, desktop: &Desktop) -> Result<Desktop> {
+        desktop::update_desktop(self, desktop)
+    }
+
+    pub fn delete_desktop(&self, id: &str) -> Result<()> {
+        desktop::delete_desktop(self, id)
+    }
+
+    pub fn list_desktop_items(&self, desktop_id: &str) -> Result<Vec<DesktopItem>> {
+        desktop::list_items(self, desktop_id)
+    }
+
+    pub fn add_desktop_item(&self, input: NewDesktopItem) -> Result<DesktopItem> {
+        desktop::add_item(self, input)
+    }
+
+    pub fn update_desktop_item(&self, id: &str, patch: DesktopItemPatch) -> Result<DesktopItem> {
+        desktop::update_item(self, id, patch)
+    }
+
+    pub fn remove_desktop_item(&self, id: &str) -> Result<()> {
+        desktop::remove_item(self, id)
+    }
+
+    // ---- folders -------------------------------------------------------------------------
+
+    pub fn list_folders(&self) -> Result<Vec<Folder>> {
+        desktop::list_folders(self)
+    }
+
+    pub fn get_folder(&self, id: &str) -> Result<Option<Folder>> {
+        desktop::get_folder(self, id)
+    }
+
+    pub fn create_folder(&self, input: NewFolder) -> Result<Folder> {
+        desktop::create_folder(self, input)
+    }
+
+    pub fn update_folder(&self, id: &str, patch: FolderPatch) -> Result<Folder> {
+        desktop::update_folder(self, id, patch)
+    }
+
+    pub fn delete_folder(&self, id: &str) -> Result<()> {
+        desktop::delete_folder(self, id)
+    }
+
+    /// What a folder resolves to: a smart filter's results, a collection's members, or (for a
+    /// filesystem folder) nothing until the V2 file browser lands.
+    pub fn folder_contents(&self, id: &str) -> Result<Vec<LibraryItem>> {
+        desktop::folder_contents(self, id)
+    }
+
+    // ---- taskbar -------------------------------------------------------------------------
+
+    pub fn list_taskbar_items(&self) -> Result<Vec<TaskbarItem>> {
+        desktop::list_taskbar(self)
+    }
+
+    pub fn pin_to_taskbar(&self, target_id: &str) -> Result<TaskbarItem> {
+        desktop::pin_to_taskbar(self, target_id)
+    }
+
+    pub fn unpin_from_taskbar(&self, target_id: &str) -> Result<()> {
+        desktop::unpin_from_taskbar(self, target_id)
+    }
+
+    pub fn reorder_taskbar(&self, ids: Vec<String>) -> Result<()> {
+        desktop::reorder_taskbar(self, &ids)
+    }
+
+    /// What the taskbar's system area shows. Infallible: a status read that failed shows
+    /// nothing rather than taking the taskbar down with it.
+    pub fn system_status(&self) -> system::SystemStatus {
+        system::status()
     }
 
     // ---- themes --------------------------------------------------------------------------

@@ -16,15 +16,12 @@ pub trait Scanner: Send {
 /// Build the scanners for the requested sources, skipping any whose store is not installed.
 pub fn scanners_for(sources: &[Source]) -> Vec<Box<dyn Scanner>> {
     let mut out: Vec<Box<dyn Scanner>> = Vec::new();
+    // Steam is the only store with a scanner today; Epic, Gog, Ea and Uwp are V2.
     for s in sources {
-        match s {
-            Source::Steam => {
-                if let Some(sc) = steam::SteamScanner::detect() {
-                    out.push(Box::new(sc));
-                }
+        if *s == Source::Steam {
+            if let Some(sc) = steam::SteamScanner::detect() {
+                out.push(Box::new(sc));
             }
-            // V2: Epic, Gog, Ea, Uwp
-            _ => {}
         }
     }
     out

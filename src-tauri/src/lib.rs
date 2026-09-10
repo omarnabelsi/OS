@@ -60,8 +60,19 @@ pub fn run() {
 
             shell_host::window::configure_main_window(&handle, &settings, &setup_args)?;
             shell_host::window::install_launch_hooks(&handle, settings.hide_shell_on_launch);
-            if let Err(e) = shell_host::hotkeys::register_exit_hotkey(&handle, &settings.exit_hotkey) {
-                log::warn!("exit hotkey `{}` not registered: {e}", settings.exit_hotkey);
+            // Logged at error, not warn: this is the documented way out of a fullscreen shell.
+            // The UI also asks for `get_exit_hotkey_status` on startup and tells the user, so a
+            // failure here is never silent.
+            if let Err(e) = shell_host::hotkeys::bind_exit_hotkey(&handle, &settings.exit_hotkey) {
+                log::error!("exit hotkey `{}` not registered: {e}", settings.exit_hotkey);
+            }
+
+            // A first run must open onto the user's library arranged as folders, not an empty
+            // wallpaper. No-op once a desktop exists.
+            match core.seed_desktop() {
+                Ok(Some(d)) => log::info!("seeded the default desktop `{}`", d.name),
+                Ok(None) => {}
+                Err(e) => log::error!("could not seed the default desktop: {e}"),
             }
 
             if setup_args.smoke {
@@ -75,6 +86,7 @@ pub fn run() {
             ipc::commands::get_app_info,
             ipc::commands::get_settings,
             ipc::commands::update_settings,
+            ipc::commands::get_exit_hotkey_status,
             ipc::commands::list_entries,
             ipc::commands::get_entry,
             ipc::commands::add_manual_entry,
@@ -85,6 +97,26 @@ pub fn run() {
             ipc::commands::set_artwork_override,
             ipc::commands::launch_entry,
             ipc::commands::active_sessions,
+            ipc::commands::list_desktops,
+            ipc::commands::get_desktop,
+            ipc::commands::create_desktop,
+            ipc::commands::update_desktop,
+            ipc::commands::delete_desktop,
+            ipc::commands::list_desktop_items,
+            ipc::commands::add_desktop_item,
+            ipc::commands::update_desktop_item,
+            ipc::commands::remove_desktop_item,
+            ipc::commands::list_folders,
+            ipc::commands::get_folder,
+            ipc::commands::create_folder,
+            ipc::commands::update_folder,
+            ipc::commands::delete_folder,
+            ipc::commands::folder_contents,
+            ipc::commands::list_taskbar_items,
+            ipc::commands::pin_to_taskbar,
+            ipc::commands::unpin_from_taskbar,
+            ipc::commands::reorder_taskbar,
+            ipc::commands::get_system_status,
             ipc::commands::list_themes,
             ipc::commands::get_theme,
             ipc::commands::set_active_theme,

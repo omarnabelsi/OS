@@ -23,7 +23,7 @@ export function LibraryScreen({ type, title, emptyMessage }: LibraryScreenProps)
   const items = useLibraryStore((s) => s.items);
   const launch = useLibraryStore((s) => s.launch);
   const setFocusedItem = useUiStore((s) => s.setFocusedItem);
-  const setOverlay = useUiStore((s) => s.setOverlay);
+  const openAddEntry = useUiStore((s) => s.openAddEntry);
 
   const [query, setQuery] = useState('');
 
@@ -34,10 +34,12 @@ export function LibraryScreen({ type, title, emptyMessage }: LibraryScreenProps)
     );
   }, [items, type, query]);
 
+  // The overlay is shared by both screens, so it has to be told which one opened it - adding a
+  // game from the Games screen must not land it in Apps.
   const addButton = useFocusable({
     id: `${type}:add`,
     group: 'content',
-    onActivate: () => setOverlay('addEntry'),
+    onActivate: () => openAddEntry(type),
   });
 
   return (

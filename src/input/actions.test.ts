@@ -60,10 +60,40 @@ describe('actionForButton', () => {
     expect(actionForButton('right_shoulder')).toBe('nextScreen');
   });
 
-  it('leaves the guide button and triggers unbound', () => {
+  it('puts window switching on the triggers, clear of the screen shoulders', () => {
+    expect(actionForButton('left_trigger')).toBe('prevWindow');
+    expect(actionForButton('right_trigger')).toBe('nextWindow');
+    expect(actionForButton('left_stick')).toBe('cycleRegion');
+  });
+
+  it('leaves the guide button and the right stick unbound', () => {
     expect(actionForButton('guide')).toBeNull();
-    expect(actionForButton('left_trigger')).toBeNull();
-    expect(actionForButton('left_stick')).toBeNull();
+    expect(actionForButton('right_stick')).toBeNull();
+  });
+});
+
+describe('window-switching chords', () => {
+  it('claims Ctrl+Tab in both directions', () => {
+    expect(actionForKey({ key: 'Tab', ctrlKey: true })).toBe('nextWindow');
+    expect(actionForKey({ key: 'Tab', ctrlKey: true, shiftKey: true })).toBe('prevWindow');
+  });
+
+  it('cycles regions with F6', () => {
+    expect(actionForKey({ key: 'F6' })).toBe('cycleRegion');
+  });
+
+  it('does not claim Alt+Tab - Windows takes it before we ever see it', () => {
+    expect(actionForKey({ key: 'Tab', altKey: true })).toBeNull();
+    expect(actionForKey({ key: 'Tab', ctrlKey: true, altKey: true })).toBeNull();
+  });
+
+  it('still leaves every other chord alone', () => {
+    // The claimed chords are an allow-list, not a hole in the modifier rule.
+    expect(actionForKey({ key: 'w', ctrlKey: true })).toBeNull();
+    expect(actionForKey({ key: 'F6', ctrlKey: true })).toBeNull();
+    expect(actionForKey({ key: 'Tab', metaKey: true })).toBeNull();
+    // A bare Tab is still not a navigation action; the engine suppresses it separately.
+    expect(actionForKey({ key: 'Tab' })).toBeNull();
   });
 });
 

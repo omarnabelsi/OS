@@ -73,6 +73,23 @@ pub fn get(db: &Db, id: &str) -> Result<Option<Entry>> {
     Ok(conn.query_row(&sql, params![id], row_to_entry).optional()?)
 }
 
+/// The members of a collection, in the order the user arranged them.
+///
+/// Ids rather than entries: a collection folder hydrates each one through `library::get`, so it
+/// gets artwork and stats without this repository reaching across tables.
+pub fn collection_entry_ids(db: &Db, collection_id: &str) -> Result<Vec<String>> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT entry_id FROM collection_items WHERE collection_id = ?1 ORDER BY sort_order ASC",
+    )?;
+    let rows = stmt.query_map(params![collection_id], |r| r.get::<_, String>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 /// Look up a store entry by `(source, source_id)` so scanners can update instead of duplicate.
 pub fn find_by_source(db: &Db, source: Source, source_id: &str) -> Result<Option<Entry>> {
     let conn = db.conn();

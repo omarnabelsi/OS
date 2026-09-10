@@ -7,6 +7,7 @@
  */
 
 import { AnimatePresence, motion } from 'framer-motion';
+import { useCallback, useEffect, useRef } from 'react';
 
 import type { LibraryItem } from '@/bridge';
 import { assetUrl } from '@/lib/assetUrl';
@@ -55,10 +56,68 @@ const SOURCE_LABELS: Record<LibraryItem['source'], string> = {
   manual: 'Added manually',
 };
 
+/** CSS custom property the hero band and the row offset both read. See shell.css `:root`. */
+const CONTENT_HEIGHT_VAR = '--hero-content-height';
+
+/**
+ * Publish how much vertical room the hero's text actually needs.
+ *
+ * The hero band is sized by a `vh` guess and the rows below are offset by the same figure, with
+ * nothing measuring the text in between. A title that wraps to two lines on a short window
+ * outgrows that guess, and the band's content then spills over its edges - which is what the
+ * "names render underneath the artwork, overlapping other text" report is. Measuring the body and
+ * letting CSS take `max(guess, measured)` makes the overlap impossible at any window size.
+ *
+ * Returns the ref to put on `.aura-hero-body`.
+ */
+function useHeroContentHeight(): (body: HTMLDivElement | null) => void {
+  const observerRef = useRef<ResizeObserver | null>(null);
+
+  // A callback ref rather than an effect: `AnimatePresence mode="wait"` keeps the outgoing body
+  // mounted while the new item is already in state, so an effect keyed on the item would attach
+  // the observer to the element on its way out. The ref fires exactly when the element swaps.
+  const setBody = useCallback((body: HTMLDivElement | null) => {
+    const root = document.documentElement;
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+
+    if (!body) {
+      root.style.removeProperty(CONTENT_HEIGHT_VAR);
+      return;
+    }
+
+    const publish = () => {
+      // The body is anchored to the bottom of the band, so the band has to be at least the
+      // body's own height plus that inset for the text to sit inside it.
+      const inset = Number.parseFloat(getComputedStyle(body).bottom) || 0;
+      root.style.setProperty(CONTENT_HEIGHT_VAR, `${Math.ceil(body.offsetHeight + inset)}px`);
+    };
+    publish();
+
+    // Absent in jsdom; the one-shot measurement above is all that environment needs.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(publish);
+    observer.observe(body);
+    observerRef.current = observer;
+  }, []);
+
+  // Leaving Home unmounts the hero, so there is nothing left to reserve room for.
+  useEffect(
+    () => () => {
+      observerRef.current?.disconnect();
+      document.documentElement.style.removeProperty(CONTENT_HEIGHT_VAR);
+    },
+    [],
+  );
+
+  return setBody;
+}
+
 export function Hero(): React.JSX.Element {
   const focusedId = useUiStore((s) => s.focusedItemId);
   const item = useLibraryStore((s) => (focusedId ? s.byId[focusedId] : undefined));
   const reduceMotion = useSettingsStore((s) => s.settings?.reduceMotion ?? false);
+  const setHeroBody = useHeroContentHeight();
 
   const art = item ? assetUrl(item.artwork.hero ?? item.artwork.grid ?? undefined) : undefined;
 
@@ -84,7 +143,7 @@ export function Hero(): React.JSX.Element {
     <div className="aura-hero">
       <AnimatePresence mode="wait">
         {item ? (
-          <motion.div key={item.id} className="aura-hero-body" {...motionProps}>
+          <motion.div ref={setHeroBody} key={item.id} className="aura-hero-body" {...motionProps}>
             <h1 className="aura-hero-title">{item.name}</h1>
             {facts.length > 0 ? (
               <p className="aura-hero-facts">

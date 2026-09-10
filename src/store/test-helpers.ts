@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Hand-written fake `AuraApi` + fixtures for the store tests. Tests mock '@/bridge' with
  * `{ api: fakeApi, onCoreEvent, emitLocal }` where the event functions come from the real
  * '@/bridge/events' local emitter (so `emitLocal(...)` drives the stores exactly like the mock
@@ -17,9 +17,8 @@ export const baseSettings: Settings = {
   tileSize: 'medium',
   uiScale: 1,
   soundVolume: 0.8,
-  musicVolume: 0.5,
   soundsEnabled: true,
-  exitHotkey: 'Ctrl+Shift+Escape',
+  exitHotkey: 'Ctrl+Alt+Q',
   steamgriddbApiKey: null,
   hideShellOnLaunch: true,
   startFullscreen: true,
@@ -29,6 +28,9 @@ export const baseSettings: Settings = {
   reduceMotion: false,
   scanOnStartup: true,
   language: 'en',
+  taskbarVisible: true,
+  taskbarPosition: 'bottom',
+  taskbarAlignment: 'center',
 };
 
 const emptyArtwork: Artwork = { grid: null, hero: null, logo: null, icon: null, source: null, userOverride: false };
@@ -88,6 +90,27 @@ export const fakeApi: FakeApi = {
   listThemes: vi.fn(),
   getTheme: vi.fn(),
   setActiveTheme: vi.fn(),
+  listDesktops: vi.fn(),
+  getDesktop: vi.fn(),
+  createDesktop: vi.fn(),
+  updateDesktop: vi.fn(),
+  deleteDesktop: vi.fn(),
+  listDesktopItems: vi.fn(),
+  addDesktopItem: vi.fn(),
+  updateDesktopItem: vi.fn(),
+  removeDesktopItem: vi.fn(),
+  listFolders: vi.fn(),
+  getFolder: vi.fn(),
+  createFolder: vi.fn(),
+  updateFolder: vi.fn(),
+  deleteFolder: vi.fn(),
+  folderContents: vi.fn(),
+  listTaskbarItems: vi.fn(),
+  pinToTaskbar: vi.fn(),
+  unpinFromTaskbar: vi.fn(),
+  reorderTaskbar: vi.fn(),
+  getSystemStatus: vi.fn(),
+  getExitHotkeyStatus: vi.fn(),
   getMonitors: vi.fn(),
   setFullscreen: vi.fn(),
   shellReady: vi.fn(),
@@ -120,6 +143,31 @@ export function resetFakeApi(): void {
   fakeApi.fetchArtwork.mockResolvedValue(undefined);
   fakeApi.launchEntry.mockResolvedValue(sampleSession);
   fakeApi.activeSessions.mockResolvedValue([]);
+  // The desktop surface: enough for a store test to load without stubbing per-case.
+  fakeApi.listDesktops.mockResolvedValue([]);
+  fakeApi.getDesktop.mockResolvedValue(null);
+  fakeApi.listDesktopItems.mockResolvedValue([]);
+  fakeApi.listFolders.mockResolvedValue([]);
+  fakeApi.getFolder.mockResolvedValue(null);
+  fakeApi.folderContents.mockResolvedValue([]);
+  fakeApi.listTaskbarItems.mockResolvedValue([]);
+  fakeApi.deleteDesktop.mockResolvedValue(undefined);
+  fakeApi.removeDesktopItem.mockResolvedValue(undefined);
+  fakeApi.deleteFolder.mockResolvedValue(undefined);
+  fakeApi.unpinFromTaskbar.mockResolvedValue(undefined);
+  fakeApi.reorderTaskbar.mockResolvedValue(undefined);
+  // A desktop PC by default: `hasBattery: false` is the case the system area must handle
+  // without drawing an empty battery forever.
+  fakeApi.getSystemStatus.mockResolvedValue({
+    batteryPercent: null,
+    charging: true,
+    hasBattery: false,
+  });
+  fakeApi.getExitHotkeyStatus.mockResolvedValue({
+    accelerator: baseSettings.exitHotkey,
+    registered: true,
+    error: null,
+  });
   fakeApi.setFullscreen.mockResolvedValue(undefined);
   fakeApi.shellReady.mockResolvedValue(undefined);
   fakeApi.exitShell.mockResolvedValue(undefined);

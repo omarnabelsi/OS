@@ -34,7 +34,13 @@ impl SgdbImage {
 }
 
 /// `{ "success": true, "data": ... }` - the envelope every endpoint uses.
+///
+/// The explicit `bound` is required. `#[serde(default)]` on `data` makes serde's derive infer
+/// `T: Default` for the whole impl, which no payload type needs to satisfy - the default it
+/// actually generates is `Option::<T>::default()`, i.e. `None`. Without this, `resp.json()` below
+/// will not compile.
 #[derive(Debug, Deserialize)]
+#[serde(bound(deserialize = "T: serde::Deserialize<'de>"))]
 struct SgdbResponse<T> {
     #[serde(default)]
     success: bool,

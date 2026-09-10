@@ -102,6 +102,9 @@ partial theme still renders:
 | `easing` | `standard` `emphasized` |
 | `duration` | `fast` `base` `slow` |
 | `tile` | `width` `aspect` `focusScale` `gap` `widthSmall` `widthMedium` `widthLarge` |
+| `desktop` | `cell` `gap` `iconSize` `labelSize` `labelMaxLines` |
+| `window` | `radius` `titleBarHeight` `resizeGrab` `opacity` `titleAlign` |
+| `taskbar` | `size` `radius` `inset` |
 | `font` | `ui` `display` |
 
 `tile.widthSmall/Medium/Large` back the tile-size setting: the chosen one is written to
@@ -110,12 +113,39 @@ partial theme still renders:
 `duration.*` is how a theme participates in reduced motion - the shell collapses all three to
 `0ms` when the user asks for it, so motion built on those tokens stops for free.
 
+`window.resizeGrab` is the width of the invisible strip along each window edge that starts a
+resize. It is a usability floor as much as a style: below about 6px the edge becomes hard to hit
+with a mouse and impossible with a trackpad. The *minimum* window size is not a token - it is a
+fixed floor in `src/wm/geometry.ts`, because a theme should not be able to ship a window too
+small to use.
+
+`window.opacity` is how much of the background colour is in the *focused* window's fill. Below
+`100%` the focused window is glass: translucent, over a `blur.surface` backdrop blur. **A theme
+that sets `blur.surface` to `0px` must set `window.opacity` to `100%`** - translucency with no blur
+behind it shows the desktop icons straight through the window, which reads as a rendering fault
+rather than as depth. Both validators warn about that combination. Unfocused windows are always
+opaque, for the same reason. `window.titleAlign` is `left` or `center`.
+
+`taskbar.inset` and `taskbar.radius` are the whole difference between a bar docked flush to the
+edge (both `0px`) and a floating card: the inset lifts it off the edge and the radius rounds it.
+`taskbar.size` is the bar's width when it is docked left or right. *Which* edge, and whether the
+buttons are centred, are the user's settings rather than the theme's.
+
+The two bundled themes are the reference for all of this. `aura-default` is dark glass;
+`aura-paper` is a light, flat, square-cornered desk with a floating taskbar, its own folder shapes
+and an image wallpaper instead of a shader - and it is nothing but a manifest, `tokens.json`,
+`layout.json`, `theme.css` and SVGs. Folder shapes are per theme: a folder whose shape the active
+theme does not offer is drawn with that theme's first shape, so switching theme restyles existing
+folders rather than leaving them all on the generic fallback.
+
 ## layout.json
 
 ```json
 {
-  "regions": ["background", "navBar", "hero", "tiles", "overlay"],
+  "regions": ["background", "desktop", "taskbar", "windows", "overlay"],
   "navBar": { "position": "top", "items": ["home", "games", "apps", "files", "media", "settings"] },
+  "desktop": { "grid": { "cell": 96, "gap": 16, "snap": true } },
+  "folderShapes": [{ "id": "rounded", "asset": "assets/folders/rounded.svg" }],
   "home": {
     "rows": [
       { "id": "recent", "title": "Recently played", "filter": { "sort": "last_played", "limit": 12 } },
@@ -132,8 +162,56 @@ partial theme still renders:
 they are filled, without a code change. `filter` is an `EntryFilter` (see [IPC.md](IPC.md)).
 
 `background` accepts the same shapes as the wallpaper setting: `{kind:"shader",id}`,
-`{kind:"image",path}`, `{kind:"video",path,muted}` or `{kind:"color",hex}`. `fallbackBackground`
+`{kind:"image",path}`, `{kind:"video",path}` or `{kind:"color",hex}`. `fallbackBackground`
 is used when the primary cannot render - no WebGL2, a shader that will not compile.
+
+### desktop
+
+```jsonc
+"desktop": {
+  "grid": { "cell": 96, "gap": 16, "snap": true },
+  "defaultItems": [
+    { "kind": "folder", "folder": "smart:games", "x": 0, "y": 0 }
+  ]
+}
+```
+
+`grid` is the fallback for a desktop that has no grid settings of its own; the user's own
+settings win. **`cell` and `gap` are logical pixels, but item positions are grid cells** - which
+is why changing `cell` re-scales the whole arrangement instead of scattering it.
+
+`defaultItems` is what a first run lays down. Items address a folder by its **locator**
+(`smart:games`, `collection:<id>`, or a filesystem path), not by id, because ids are generated
+per install and a theme cannot know them.
+
+### folderShapes
+
+```jsonc
+"folderShapes": [
+  { "id": "rounded", "asset": "assets/folders/rounded.svg" },
+  { "id": "capsule", "asset": "assets/folders/capsule.svg" },
+  { "id": "tab",     "asset": "assets/folders/tab.svg" }
+]
+```
+
+The shapes the folder editor offers. The picker enumerates whatever the active theme declares -
+there is no built-in list - so a theme can ship one shape or twenty.
+
+Each SVG is used as a **mask**, not an image: the folder's colour tints it. Ship a flat
+silhouette, not a coloured illustration, or the tint will have nothing to do. A folder whose
+shape id the current theme does not declare falls back to a plain rounded plate rather than
+disappearing, so switching themes never leaves a hole.
+
+`id` must be kebab-case, and `asset` obeys the same path rules as every other reference
+(relative, no `..`, must exist inside the package). An entry that breaks them is **dropped with
+a warning** rather than failing the theme - `npm run theme:validate` reports it as an error so
+you catch it before shipping. layout.json is handed to the UI verbatim, so this is a real
+path-traversal surface once themes are shared; see [RISKS.md](RISKS.md) R5.
+
+**A theme cannot play audio.** A video wallpaper is always silent, and there is no music or
+soundtrack slot anywhere in a theme package - the five sounds below are short interface blips and
+nothing else. A `"muted"` key on a video background is ignored rather than rejected, so a theme
+written against an older version of this document still loads.
 
 ## theme.css
 
@@ -149,6 +227,15 @@ These class names are the stable contract:
 | `.aura-nav`, `.aura-nav-item` | The nav bar; `data-active` marks the current screen |
 | `.aura-tile`, `.aura-tile-art`, `.aura-tile-label` | A library tile |
 | `.aura-hero`, `.aura-hero-title` | The hero panel |
+| `.aura-desktop`, `.aura-desktop-cell` | The desktop surface and one item's cell |
+| `.aura-window` | A window; `data-focused` and `data-mode` (normal/maximised) |
+| `.aura-window-title`, `.aura-window-name`, `.aura-window-control` | Its title bar and buttons |
+| `.aura-window-body` | The window's content area |
+| `.aura-window-snap-preview` | Where a dragged window would land |
+| `.aura-folder`, `.aura-folder-row`, `.aura-folder-tool` | A folder window's body; `data-layout` is grid/list/covers |
+| `.aura-taskbar`, `.aura-taskbar-button`, `.aura-taskbar-clock` | The taskbar; `data-position` and `data-align` on the bar, `data-running` and `data-active` on buttons |
+| `.aura-settings-app`, `.aura-settings-category`, `.aura-setting` | The Settings app |
+| `.aura-editor`, `.aura-choice` | The folder editor and its option buttons; `data-active` marks the current choice |
 | `.aura-overlay`, `.aura-panel` | Modal overlays |
 | `.aura-toast` | A toast; `data-level` is info/warning/error |
 
@@ -160,11 +247,14 @@ Keep motion to `transform`, `opacity` and `filter` - they stay on the compositor
 
 ## sounds/
 
-Five slots: `move`, `select`, `back`, `launch`, `error`. WAV or anything the webview decodes.
+Five slots and no more: `move`, `select`, `back`, `launch`, `error`. WAV or anything the webview
+decodes. These are the app's **only** audio - a theme has no music, soundtrack or ambience slot,
+and a file dropped anywhere else in the package is never played.
 
 `move` plays on **every** focus change. Keep it under ~80 ms and soft; anything sharp becomes
-intolerable within a minute of use. `scripts/generate-sounds.mjs` synthesises the default set and
-is a reasonable starting point.
+intolerable within a minute of use. A long file in one of these slots is not a way to ship a
+soundtrack: each is fired per interaction and overlapped, so anything but a blip sounds broken.
+`scripts/generate-sounds.mjs` synthesises the default set and is a reasonable starting point.
 
 ## shaders/
 

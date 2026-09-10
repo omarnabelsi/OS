@@ -1,5 +1,6 @@
 //! Artwork pipeline: SteamGridDB (when an API key is set) -> Steam CDN (for Steam entries) ->
-//! local cache -> `artwork` table -> `library://artwork` events.
+//! the program's own executable icon (for everything else) -> local cache -> `artwork` table ->
+//! `library://artwork` events.
 //!
 //! Rules:
 //!   - Never overwrite a `user_override` row unless `force`.
@@ -7,11 +8,15 @@
 //!   - Cache path via `cache::cache_path`; skip the download if the file exists and !force.
 //!   - Emit one `ArtworkUpdated` per asset saved, and one `Toast{Warning}` if everything failed.
 //!   - Rate-limit SteamGridDB to roughly 4 requests/sec.
+//!   - The exe-icon step runs last and only fills gaps, so real cover art always wins.
 
 pub mod cache;
+pub mod exe_icon;
+pub mod png;
 pub mod steam_cdn;
 pub mod steamgriddb;
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -125,6 +130,87 @@ fn candidate_urls(
     out
 }
 
+/// The local file an entry's icon can be read from: the executable it launches, or the shortcut
+/// standing in for one. `None` for a protocol launch, which names no file at all.
+fn local_icon_path(entry: &Entry) -> Option<PathBuf> {
+    match &entry.launch {
+        LaunchSpec::Exe { path, .. } => Some(PathBuf::from(path)),
+        // `Shell` covers both a `.lnk` on disk and virtual targets like
+        // `shell:AppsFolder\Package!App`; only the former is a file we can read an icon from.
+        LaunchSpec::Shell { target } => Some(PathBuf::from(target)),
+        LaunchSpec::Uri { .. } => None,
+    }
+}
+
+/// Cache key for an extracted icon.
+///
+/// `cache::cache_path` reads the extension off the end of what it is given, so the key ends in
+/// `.png`. Hashing the source path (rather than a URL) means the same program re-added later
+/// lands on the same cache file.
+fn icon_cache_key(source: &Path, kind: ArtworkKind) -> String {
+    format!("exe-icon://{}/{}.png", kind.as_str(), source.display())
+}
+
+/// Artwork for a program with nothing to look up: the icon inside its own executable.
+///
+/// Only ever fills assets that are still missing, and never for a Steam entry - the CDN has real
+/// cover art for those. Returns how many assets were saved.
+fn fetch_local_icon(core: &Core, entry: &Entry, current: &mut Artwork, force: bool) -> usize {
+    if entry.source == Source::Steam {
+        return 0;
+    }
+
+    // Icon first because that is what this is; Grid too, because a tile with no grid is blank and
+    // a letterboxed icon reads far better than a generated colour swatch.
+    let wanted: Vec<ArtworkKind> = [ArtworkKind::Icon, ArtworkKind::Grid]
+        .into_iter()
+        .filter(|kind| force || current.get(*kind).is_none())
+        .collect();
+    if wanted.is_empty() {
+        return 0;
+    }
+
+    let Some(source) = local_icon_path(entry) else { return 0 };
+    if !source.is_file() {
+        return 0;
+    }
+
+    let (icon_png, grid_png) = match exe_icon::extract_pngs(&source) {
+        Ok(pngs) => pngs,
+        Err(e) => {
+            tracing::debug!("artwork: no icon in `{}`: {e}", source.display());
+            return 0;
+        }
+    };
+
+    let mut saved = 0usize;
+    for kind in wanted {
+        let bytes = if kind == ArtworkKind::Grid { &grid_png } else { &icon_png };
+        let key = icon_cache_key(&source, kind);
+        let dest = cache::cache_path(&core.paths.artwork_dir, &entry.id, kind, &key);
+        if let Err(e) = cache::write_atomic(&dest, bytes) {
+            tracing::warn!("artwork: cannot write {}: {e}", dest.display());
+            continue;
+        }
+
+        let path = dest.display().to_string();
+        match db::artwork::set_kind(&core.db, &entry.id, kind, Some(&path), "exe_icon", false) {
+            Ok(updated) => {
+                *current = updated;
+                saved += 1;
+                core.sink.emit(CoreEvent::ArtworkUpdated(ArtworkUpdated {
+                    entry_id: entry.id.clone(),
+                    kind,
+                    path,
+                    source: "exe_icon".to_string(),
+                }));
+            }
+            Err(e) => tracing::warn!("artwork: cannot record the icon for {}: {e}", entry.name),
+        }
+    }
+    saved
+}
+
 /// Blocking fetch. Returns the resulting artwork row (possibly unchanged).
 pub fn fetch_for_entry(core: &Core, entry: &Entry, force: bool) -> Result<Artwork> {
     let mut current = db::artwork::get(&core.db, &entry.id)?;
@@ -178,6 +264,10 @@ pub fn fetch_for_entry(core: &Core, entry: &Entry, force: bool) -> Result<Artwor
             break;
         }
     }
+
+    // Last, and only into the gaps: a real cover from SteamGridDB beats an app icon, but an app
+    // icon beats nothing, and for a manually added program it is the only art that exists.
+    saved += fetch_local_icon(core, entry, &mut current, force);
 
     // Only complain when we tried and got nothing at all - a missing logo is not an error.
     if saved == 0 && attempted > 0 && !current.is_complete() {
@@ -345,5 +435,126 @@ mod tests {
         entry.source = Source::Manual;
         entry.source_id = None;
         assert!(candidate_urls(None, None, &entry, ArtworkKind::Grid).is_empty());
+    }
+
+    #[test]
+    fn only_a_named_file_can_have_its_icon_read() {
+        let (_tmp, core, _sink) = test_core();
+        let mut entry = add_entry(&core, "e1");
+
+        // A protocol launch names nothing on disk.
+        assert_eq!(local_icon_path(&entry), None);
+
+        entry.launch = LaunchSpec::Exe {
+            path: r"C:\Programs\Thing\thing.exe".into(),
+            args: vec![],
+            cwd: None,
+        };
+        assert_eq!(local_icon_path(&entry), Some(PathBuf::from(r"C:\Programs\Thing\thing.exe")));
+
+        // A shortcut is a file; `exe_icon` follows it to its target.
+        entry.launch = LaunchSpec::Shell { target: r"C:\Users\x\Discord.lnk".into() };
+        assert_eq!(local_icon_path(&entry), Some(PathBuf::from(r"C:\Users\x\Discord.lnk")));
+    }
+
+    #[test]
+    fn the_icon_cache_key_is_stable_per_kind_and_ends_in_png() {
+        let exe = Path::new(r"C:\Programs\Thing\thing.exe");
+        let grid = icon_cache_key(exe, ArtworkKind::Grid);
+        let icon = icon_cache_key(exe, ArtworkKind::Icon);
+        assert_ne!(grid, icon, "the two assets are different images");
+        assert_eq!(grid, icon_cache_key(exe, ArtworkKind::Grid), "same input, same key");
+        assert_ne!(grid, icon_cache_key(Path::new(r"C:\other.exe"), ArtworkKind::Grid));
+
+        // The key is what decides the cache file's extension.
+        let dir = Path::new("C:/cache/artwork");
+        let path = cache::cache_path(dir, "e1", ArtworkKind::Grid, &grid);
+        let name = path.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with("grid-") && name.ends_with(".png"), "got {name}");
+    }
+
+    #[test]
+    fn steam_entries_never_use_their_launcher_icon() {
+        let (_tmp, core, _sink) = test_core();
+        // The fixture is a Steam entry, and Steam entries get real cover art from the CDN.
+        let entry = add_entry(&core, "e1");
+        let mut artwork = Artwork::default();
+        assert_eq!(fetch_local_icon(&core, &entry, &mut artwork, false), 0);
+        assert_eq!(artwork, Artwork::default());
+    }
+
+    #[test]
+    fn a_manual_entry_pointing_at_nothing_saves_nothing() {
+        let (tmp, core, sink) = test_core();
+        let mut entry = add_entry(&core, "e1");
+        entry.source = Source::Manual;
+        entry.source_id = None;
+        entry.launch = LaunchSpec::Exe {
+            path: tmp.path().join("gone.exe").display().to_string(),
+            args: vec![],
+            cwd: None,
+        };
+
+        let mut artwork = Artwork::default();
+        assert_eq!(fetch_local_icon(&core, &entry, &mut artwork, false), 0);
+        assert!(sink.take().is_empty(), "a missing file is not worth an event");
+    }
+
+    #[test]
+    fn existing_artwork_is_not_replaced_by_an_icon() {
+        let (_tmp, core, _sink) = test_core();
+        let mut entry = add_entry(&core, "e1");
+        entry.source = Source::Manual;
+        entry.source_id = None;
+        entry.launch = LaunchSpec::Exe { path: "irrelevant".into(), args: vec![], cwd: None };
+
+        // Both slots already filled: the step must not even look at the file.
+        let mut artwork = Artwork {
+            grid: Some("C:/real-cover.jpg".into()),
+            icon: Some("C:/real-icon.png".into()),
+            ..Default::default()
+        };
+        let before = artwork.clone();
+        assert_eq!(fetch_local_icon(&core, &entry, &mut artwork, false), 0);
+        assert_eq!(artwork, before);
+    }
+
+    /// End to end on Windows: a real executable, a real icon, two real cache files.
+    #[cfg(windows)]
+    #[test]
+    fn a_manual_entry_gets_the_icon_out_of_its_executable() {
+        let (_tmp, core, sink) = test_core();
+        let exe = Path::new(r"C:\Windows\explorer.exe");
+        if !exe.is_file() {
+            eprintln!("skipping: {} not present", exe.display());
+            return;
+        }
+
+        let mut entry = add_entry(&core, "e1");
+        entry.source = Source::Manual;
+        entry.source_id = None;
+        entry.launch =
+            LaunchSpec::Exe { path: exe.display().to_string(), args: vec![], cwd: None };
+
+        let mut artwork = Artwork::default();
+        assert_eq!(fetch_local_icon(&core, &entry, &mut artwork, false), 2, "icon and grid");
+
+        for path in [artwork.icon.as_deref(), artwork.grid.as_deref()] {
+            let path = path.expect("both assets must be recorded");
+            assert!(std::path::Path::new(path).is_file(), "{path} must exist on disk");
+            assert!(path.ends_with(".png"));
+        }
+        assert_eq!(artwork.source.as_deref(), Some("exe_icon"));
+        assert!(!artwork.user_override, "an extracted icon is not a user override");
+
+        let kinds: Vec<ArtworkKind> = sink
+            .take()
+            .into_iter()
+            .filter_map(|e| match e {
+                CoreEvent::ArtworkUpdated(u) => Some(u.kind),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kinds, vec![ArtworkKind::Icon, ArtworkKind::Grid]);
     }
 }

@@ -3,11 +3,12 @@
 //! ```text
 //! aura-shell [--smoke [SECS]] [--windowed] [--theme ID] [--data-dir PATH]
 //! ```
-//! - `--smoke`    : windowed, never topmost, auto-exit after SECS (default 8). Prints
-//!                  `AURA_SMOKE_OK` on a clean exit. Used by CI and `npm run smoke`.
-//! - `--windowed` : start in a 1280x720 window regardless of settings.
-//! - `--theme`    : override the active theme id for this run (not persisted).
-//! - `--data-dir` : override the data directory (sets `AURA_DATA_DIR`).
+//! - `--smoke`: windowed, never topmost, auto-exit after SECS (default 8). Prints
+//!   `AURA_SMOKE_OK` on a clean exit. Used by CI and `npm run smoke`.
+//! - `--windowed`: start windowed regardless of settings (a fraction of the monitor's size,
+//!   see `shell_host::window::windowed_size`).
+//! - `--theme`: override the active theme id for this run (not persisted).
+//! - `--data-dir`: override the data directory (sets `AURA_DATA_DIR`).
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Args {
@@ -51,7 +52,7 @@ mod tests {
 
     #[test]
     fn parses_flags() {
-        assert_eq!(p("").smoke, false);
+        assert!(!p("").smoke);
         let a = p("--smoke 3 --windowed --theme neon --data-dir C:/x");
         assert!(a.smoke && a.windowed);
         assert_eq!(a.smoke_secs, 3);

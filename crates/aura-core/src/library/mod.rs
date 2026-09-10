@@ -8,6 +8,7 @@
 //!   4. entries no longer present on disk are NOT deleted in V1 - just logged
 //!   5. emit LibraryUpdated{reason:"scan"} then ScanProgress{Done, done:true}
 //!   6. kick one background artwork pass for every entry still missing art
+//!
 //! Scans run on a std thread; `Core` is `Arc`. Errors are emitted as ScanProgress{Error}.
 
 pub mod scanners;
@@ -62,8 +63,10 @@ fn entry_from_discovered(d: &DiscoveredEntry, id: String, created_at: i64, now: 
 }
 
 /// Validate the executable, build an `Entry` (source = Manual), persist, emit
-/// `LibraryUpdated{reason:"manual_add"}` and return it. Artwork fetch is NOT started
-/// automatically for manual entries (no store id); the UI offers "Find artwork" instead.
+/// `LibraryUpdated{reason:"manual_add"}` and return it.
+///
+/// No background work happens here: `Core::add_manual_entry` starts the artwork pass (which for a
+/// manual entry means reading the executable's own icon) once this has returned.
 pub fn add_manual(core: &Core, input: AddManualEntryInput) -> Result<LibraryItem> {
     let discovered = scanners::manual::discover(&input)?;
     let now = crate::now_secs();

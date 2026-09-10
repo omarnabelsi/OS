@@ -42,6 +42,41 @@ fn check_asset(dir: &Path, rel: &str, what: &str) -> Result<()> {
     Ok(())
 }
 
+/// Drop any `folderShapes` entry that is malformed or points outside the theme folder.
+///
+/// `layout.json` is read as opaque JSON and handed to the UI, which turns asset paths into
+/// `asset://` URLs. That makes it a path-traversal surface the moment anyone shares a theme
+/// (docs/RISKS.md R5), and until folder shapes it referenced no files at all.
+///
+/// A bad entry is removed rather than failing the whole theme: neutralising it is what matters,
+/// and one broken shape should not cost the user their whole desktop. Returns notes to log.
+pub fn sanitise_folder_shapes(dir: &Path, layout: &mut serde_json::Value) -> Vec<String> {
+    let mut notes = Vec::new();
+    let Some(shapes) = layout.get_mut("folderShapes").and_then(|s| s.as_array_mut()) else {
+        return notes;
+    };
+
+    shapes.retain(|shape| {
+        let id = shape.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let asset = shape.get("asset").and_then(|v| v.as_str()).unwrap_or("");
+        if id.trim().is_empty() {
+            notes.push(format!("folder shape {shape} has no id; ignored"));
+            return false;
+        }
+        if !is_kebab_case(id) {
+            notes.push(format!("folder shape id `{id}` must be kebab-case; ignored"));
+            return false;
+        }
+        if let Err(e) = check_asset(dir, asset, &format!("folder shape `{id}`")) {
+            notes.push(format!("{e}; ignored"));
+            return false;
+        }
+        true
+    });
+
+    notes
+}
+
 pub fn manifest(dir: &Path, m: &ThemeManifest, app_version: &str) -> Result<()> {
     if !is_kebab_case(&m.id) {
         return Err(theme_err(format!("theme id `{}` must be kebab-case", m.id)));
@@ -105,7 +140,35 @@ pub fn tokens(tokens: &serde_json::Value) -> Vec<String> {
             out.push(format!("tokens.json has no `color.{key}`; the built-in fallback is used"));
         }
     }
+
+    // A theme with no backdrop blur must not leave the focused window translucent: with nothing
+    // blurred behind it, the desktop icons show straight through the window, which reads as a
+    // rendering fault. Mirrored in scripts/validate-theme.mjs; see docs/THEME_FORMAT.md.
+    let blur = token_number(tokens.get("blur").and_then(|b| b.get("surface")));
+    let opacity = token_number(tokens.get("window").and_then(|w| w.get("opacity")));
+    // An absent `window.opacity` means the shell's default, which is translucent.
+    if blur == Some(0.0) && opacity.is_none_or(|o| o < 100.0) {
+        out.push(
+            "`blur.surface` is 0 but `window.opacity` is below 100%: the focused window will show \
+             the desktop through it; set `window.opacity` to \"100%\""
+                .into(),
+        );
+    }
     out
+}
+
+/// A token's numeric part: `0`, `"0px"`, `"62%"` and `"1.5rem"` all parse; anything else is None.
+fn token_number(value: Option<&serde_json::Value>) -> Option<f64> {
+    match value? {
+        serde_json::Value::Number(n) => n.as_f64(),
+        serde_json::Value::String(s) => s
+            .trim()
+            .trim_end_matches(|c: char| c.is_ascii_alphabetic() || c == '%')
+            .trim()
+            .parse()
+            .ok(),
+        _ => None,
+    }
 }
 
 /// Everything a theme author should know but that does not stop the theme loading.
@@ -263,5 +326,41 @@ mod tests {
 
         let complete = serde_json::json!({ "color": { "accent": "#fff", "background": "#000" } });
         assert!(tokens(&complete).is_empty());
+    }
+
+    #[test]
+    fn no_blur_with_a_translucent_window_is_flagged() {
+        let colours = serde_json::json!({ "accent": "#fff", "background": "#000" });
+        let glass_without_blur = |opacity: Option<&str>| {
+            let mut t = serde_json::json!({ "color": colours, "blur": { "surface": "0px" } });
+            if let Some(o) = opacity {
+                t["window"] = serde_json::json!({ "opacity": o });
+            }
+            tokens(&t)
+        };
+
+        // The shell's default opacity is translucent, so leaving it out is the same mistake.
+        assert!(glass_without_blur(None).iter().any(|w| w.contains("window.opacity")));
+        assert!(glass_without_blur(Some("62%")).iter().any(|w| w.contains("window.opacity")));
+        // Opaque is the fix, and must not be flagged.
+        assert!(glass_without_blur(Some("100%")).is_empty());
+
+        // With a real blur, translucency is glass and is fine.
+        let glass = serde_json::json!({
+            "color": colours,
+            "blur": { "surface": "18px" },
+            "window": { "opacity": "62%" }
+        });
+        assert!(tokens(&glass).is_empty());
+    }
+
+    #[test]
+    fn token_numbers_parse_with_or_without_units() {
+        assert_eq!(token_number(Some(&serde_json::json!(0))), Some(0.0));
+        assert_eq!(token_number(Some(&serde_json::json!("0px"))), Some(0.0));
+        assert_eq!(token_number(Some(&serde_json::json!("62%"))), Some(62.0));
+        assert_eq!(token_number(Some(&serde_json::json!(" 1.5rem "))), Some(1.5));
+        assert_eq!(token_number(Some(&serde_json::json!("auto"))), None);
+        assert_eq!(token_number(None), None);
     }
 }

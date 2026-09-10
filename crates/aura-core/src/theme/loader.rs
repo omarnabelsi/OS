@@ -3,11 +3,14 @@
 //! Steps: read+parse `manifest.json` (Theme error on failure) -> `validate::manifest` ->
 //! read `tokens.json`, `layout.json` (default `{}` if absent), `theme.css` (default "") ->
 //! resolve sounds/shaders to absolute paths, read shader sources -> `ThemeBundle`.
+//!
+//! Sounds are limited to the five interface slots in `SOUND_SLOTS`; there is no music slot and a
+//! theme cannot invent one.
 
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::manifest::ThemeManifest;
+use super::manifest::{ThemeManifest, SOUND_SLOTS};
 use super::{validate, APP_VERSION};
 use crate::error::{CoreError, Result};
 use crate::model::{ThemeBundle, ThemeInfo};
@@ -65,7 +68,12 @@ pub fn load_from_dir(dir: &Path, builtin: bool) -> Result<ThemeBundle> {
     validate::manifest(dir, &manifest, APP_VERSION)?;
 
     let tokens = read_json_or_empty(&dir.join("tokens.json"))?;
-    let layout = read_json_or_empty(&dir.join("layout.json"))?;
+    let mut layout = read_json_or_empty(&dir.join("layout.json"))?;
+    // layout.json is handed to the UI verbatim and now references assets, so it is a
+    // path-traversal surface for a shared theme. Offending entries are dropped, not fatal.
+    for note in validate::sanitise_folder_shapes(dir, &mut layout) {
+        tracing::warn!("theme `{}`: {note}", manifest.id);
+    }
 
     let css_path = dir.join("theme.css");
     let css = if css_path.is_file() {
@@ -75,8 +83,15 @@ pub fn load_from_dir(dir: &Path, builtin: bool) -> Result<ThemeBundle> {
         String::new()
     };
 
+    // Only the five known interface slots are resolved. A theme declaring anything else gets it
+    // dropped here rather than handed to the UI: the app plays no music, and an unknown slot is
+    // either a typo or an attempt to smuggle a soundtrack into the bundle. See THEME_FORMAT.md.
     let mut sounds = HashMap::new();
     for (slot, rel) in &manifest.sounds {
+        if !SOUND_SLOTS.contains(&slot.as_str()) {
+            tracing::warn!("theme `{}`: ignoring unknown sound slot `{slot}`", manifest.id);
+            continue;
+        }
         sounds.insert(slot.clone(), absolute(&dir.join(rel)));
     }
 
@@ -121,9 +136,10 @@ mod tests {
         std::fs::write(dir.join("sounds").join("move.wav"), b"RIFF").unwrap();
         std::fs::write(dir.join("shaders").join("aurora.frag"), "void main(){}").unwrap();
         std::fs::write(dir.join("theme.css"), ".aura-root{}").unwrap();
+        // r##"..."## because the JSON contains `"#` (hex colours), which would close an r#".
         std::fs::write(
             dir.join("tokens.json"),
-            r#"{"color":{"accent":"#6ee7ff","background":"#07080c"}}"#,
+            r##"{"color":{"accent":"#6ee7ff","background":"#07080c"}}"##,
         )
         .unwrap();
         std::fs::write(dir.join("layout.json"), r#"{"regions":["navBar"]}"#).unwrap();
@@ -165,6 +181,66 @@ mod tests {
         assert!(Path::new(move_sound).is_file(), "got {move_sound}");
         assert!(!bundle.assets_dir.is_empty());
         assert!(!bundle.info.path.contains(r"\\?\"), "verbatim prefix must be stripped");
+    }
+
+    /// The app plays no music, so a theme must not be able to get an audio file of its own
+    /// choosing into the bundle by inventing a sound slot for it.
+    #[test]
+    fn an_unknown_sound_slot_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = write_theme(tmp.path(), "test-theme");
+        std::fs::write(dir.join("sounds").join("soundtrack.mp3"), b"ID3").unwrap();
+        std::fs::write(
+            dir.join(MANIFEST_FILE),
+            r#"{
+              "id": "test-theme",
+              "name": "Test",
+              "author": "Someone",
+              "version": "1.0.0",
+              "engine": "aura-theme/1",
+              "sounds": {
+                "move": "sounds/move.wav",
+                "music": "sounds/soundtrack.mp3",
+                "ambience": "sounds/soundtrack.mp3"
+              }
+            }"#,
+        )
+        .unwrap();
+
+        let bundle = load_from_dir(&dir, true).unwrap();
+        assert!(bundle.sounds.contains_key("move"), "a real slot still loads");
+        assert_eq!(bundle.sounds.len(), 1, "only the known slot survives");
+        for invented in ["music", "ambience"] {
+            assert!(!bundle.sounds.contains_key(invented), "`{invented}` must not reach the UI");
+        }
+    }
+
+    /// R5: a shared theme must not be able to reach outside its own folder through layout.json.
+    #[test]
+    fn folder_shapes_that_escape_the_theme_folder_are_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = write_theme(tmp.path(), "test-theme");
+        std::fs::create_dir_all(dir.join("assets").join("folders")).unwrap();
+        std::fs::write(dir.join("assets").join("folders").join("rounded.svg"), "<svg/>").unwrap();
+        std::fs::write(
+            dir.join("layout.json"),
+            r#"{
+              "folderShapes": [
+                { "id": "rounded",  "asset": "assets/folders/rounded.svg" },
+                { "id": "escape",   "asset": "../../../windows/system32/config/sam" },
+                { "id": "absolute", "asset": "C:/Windows/win.ini" },
+                { "id": "missing",  "asset": "assets/folders/nope.svg" },
+                { "id": "Bad Id",   "asset": "assets/folders/rounded.svg" },
+                { "asset": "assets/folders/rounded.svg" }
+              ]
+            }"#,
+        )
+        .unwrap();
+
+        let bundle = load_from_dir(&dir, true).unwrap();
+        let shapes = bundle.layout["folderShapes"].as_array().unwrap();
+        let ids: Vec<&str> = shapes.iter().filter_map(|s| s["id"].as_str()).collect();
+        assert_eq!(ids, vec!["rounded"], "only the safe, existing, well-named shape survives");
     }
 
     #[test]

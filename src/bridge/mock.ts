@@ -20,16 +20,31 @@ import selectSound from '../../themes/aura-default/sounds/select.wav?url';
 import backSound from '../../themes/aura-default/sounds/back.wav?url';
 import launchSound from '../../themes/aura-default/sounds/launch.wav?url';
 import errorSound from '../../themes/aura-default/sounds/error.wav?url';
+// The second bundled theme, imported the same way, so theme switching can be exercised in a
+// browser against the real package rather than a stand-in.
+import paperManifest from '../../themes/aura-paper/manifest.json';
+import paperTokens from '../../themes/aura-paper/tokens.json';
+import paperLayout from '../../themes/aura-paper/layout.json';
+import paperCss from '../../themes/aura-paper/theme.css?raw';
+import paperMoveSound from '../../themes/aura-paper/sounds/move.wav?url';
+import paperSelectSound from '../../themes/aura-paper/sounds/select.wav?url';
+import paperBackSound from '../../themes/aura-paper/sounds/back.wav?url';
+import paperLaunchSound from '../../themes/aura-paper/sounds/launch.wav?url';
+import paperErrorSound from '../../themes/aura-paper/sounds/error.wav?url';
 
 import type { AuraApi } from './api';
 import { emitLocal } from './events';
 import type {
   Artwork,
+  Desktop,
+  DesktopItem,
   EntryFilter,
+  Folder,
   LaunchSession,
   LibraryItem,
   Settings,
   Stats,
+  TaskbarItem,
   ThemeBundle,
   ThemeInfo,
   ThemeLayout,
@@ -145,6 +160,74 @@ function seedToItem(seed: Seed): LibraryItem {
 
 let library: LibraryItem[] = SEEDS.map(seedToItem);
 
+// ---- desktop ------------------------------------------------------------------------------------
+
+/**
+ * A seeded desktop matching what the real core creates on a first run: the old home rows as
+ * smart folders, laid down the first column. Keeping this faithful is what lets the desktop
+ * surface, window manager and taskbar be built entirely in the browser.
+ */
+const SEEDED_FOLDERS: Folder[] = [
+  ['smart:games', 'Games', 'games', { type: 'game' as const }],
+  ['smart:apps', 'Apps', 'apps', { type: 'app' as const }],
+  ['smart:favourites', 'Favourites', 'star', { favouritesOnly: true }],
+  ['smart:recently-played', 'Recently played', 'play', { sort: 'last_played' as const, limit: 24 }],
+].map(([path, label, icon, filter], i) => ({
+  id: `folder-${i + 1}`,
+  path: path as string,
+  label: label as string,
+  color: null,
+  icon: icon as string,
+  cover: null,
+  layout: 'grid' as const,
+  shape: 'rounded',
+  kind: 'smart' as const,
+  collectionId: null,
+  filter: filter as EntryFilter,
+  windowState: null,
+  sortOrder: i,
+}));
+
+function freshDesktopState() {
+  const desktops: Desktop[] = [
+    {
+      id: 'desktop-1',
+      name: 'Desktop',
+      wallpaper: null,
+      grid: { cell: 96, gap: 16, snap: true, autoArrange: false },
+      sortOrder: 0,
+    },
+  ];
+  const items: DesktopItem[] = SEEDED_FOLDERS.map((f, i) => ({
+    id: `item-${i + 1}`,
+    desktopId: 'desktop-1',
+    kind: 'folder' as const,
+    targetId: f.id,
+    x: 0,
+    y: i,
+    width: 1,
+    height: 1,
+    labelOverride: null,
+    iconOverride: null,
+    sortOrder: i,
+  }));
+  const taskbar: TaskbarItem[] = [
+    { id: 'launcher', kind: 'launcher', targetId: null, sortOrder: -1000 },
+    { id: 'pin-1', kind: 'pinned', targetId: 'g-solstice', sortOrder: 0 },
+    { id: 'pin-2', kind: 'pinned', targetId: 'a-atlas', sortOrder: 1 },
+    { id: 'system-area', kind: 'system_area', targetId: null, sortOrder: 1000 },
+  ];
+  return { desktops, items, folders: SEEDED_FOLDERS.map((f) => ({ ...f })), taskbar };
+}
+
+let desktopState = freshDesktopState();
+let mockIdSeq = 0;
+/**
+ * The `n` matters: the seeded rows are `item-1`, `desktop-1` and so on, so a bare counter would
+ * hand out an id that already exists and a delete-by-id would take both rows with it.
+ */
+const nextId = (prefix: string) => `${prefix}-n${(++mockIdSeq).toString(36)}`;
+
 // ---- settings ---------------------------------------------------------------------------------
 
 const defaultSettings: Settings = {
@@ -154,9 +237,10 @@ const defaultSettings: Settings = {
   tileSize: 'medium',
   uiScale: 1,
   soundVolume: 0.6,
-  musicVolume: 0.3,
   soundsEnabled: true,
-  exitHotkey: 'Ctrl+Shift+Escape',
+  // Matches DEFAULT_EXIT_HOTKEY in crates/aura-core/src/config/settings.rs. Not
+  // Ctrl+Shift+Escape: Windows reserves that for Task Manager and never hands it to an app.
+  exitHotkey: 'Ctrl+Alt+Q',
   steamgriddbApiKey: null,
   hideShellOnLaunch: true,
   startFullscreen: true,
@@ -166,6 +250,9 @@ const defaultSettings: Settings = {
   reduceMotion: false,
   scanOnStartup: true,
   language: 'en',
+  taskbarVisible: true,
+  taskbarPosition: 'bottom',
+  taskbarAlignment: 'center',
 };
 
 function loadSettings(): Settings {
@@ -190,35 +277,82 @@ let settings = loadSettings();
 
 // ---- theme ------------------------------------------------------------------------------------
 
-const themeInfo: ThemeInfo = {
-  id: themeManifest.id,
-  name: themeManifest.name,
-  author: themeManifest.author,
-  version: themeManifest.version,
-  description: themeManifest.description,
-  screenshots: [],
-  path: '/themes/aura-default',
-  builtin: true,
-  minAppVersion: themeManifest.minAppVersion ?? null,
+interface ManifestFields {
+  id: string;
+  name: string;
+  author: string;
+  version: string;
+  description: string;
+  minAppVersion?: string;
+}
+
+/**
+ * A bundle from a theme package's parts, shaped exactly as the core's loader returns one.
+ *
+ * JSON imports widen string literals ("top" -> string), so the shapes are asserted rather than
+ * inferred. The theme files themselves are the contract; validate-theme.mjs checks them.
+ */
+function bundleFor(
+  manifest: ManifestFields,
+  tokens: unknown,
+  layout: unknown,
+  css: string,
+  sounds: Record<string, string>,
+  shaders: Record<string, string>,
+): ThemeBundle {
+  const path = `/themes/${manifest.id}`;
+  const info: ThemeInfo = {
+    id: manifest.id,
+    name: manifest.name,
+    author: manifest.author,
+    version: manifest.version,
+    description: manifest.description,
+    screenshots: [],
+    path,
+    builtin: true,
+    minAppVersion: manifest.minAppVersion ?? null,
+  };
+  return {
+    info,
+    tokens: tokens as ThemeTokens,
+    layout: layout as unknown as ThemeLayout,
+    css,
+    sounds,
+    shaders,
+    assetsDir: `${path}/assets`,
+  };
+}
+
+/** Every bundled theme, keyed by id - both real packages from `themes/`. */
+const THEMES: Record<string, ThemeBundle> = {
+  [themeManifest.id]: bundleFor(
+    themeManifest,
+    themeTokens,
+    themeLayout,
+    themeCss,
+    { move: moveSound, select: selectSound, back: backSound, launch: launchSound, error: errorSound },
+    { aurora: auroraShader, nebula: nebulaShader },
+  ),
+  [paperManifest.id]: bundleFor(
+    paperManifest,
+    paperTokens,
+    paperLayout,
+    paperCss,
+    {
+      move: paperMoveSound,
+      select: paperSelectSound,
+      back: paperBackSound,
+      launch: paperLaunchSound,
+      error: paperErrorSound,
+    },
+    {},
+  ),
 };
 
-const themeBundle: ThemeBundle = {
-  info: themeInfo,
-  // JSON imports widen string literals ("top" -> string), so the shapes are asserted rather
-  // than inferred. The theme files themselves are the contract; validate-theme.mjs checks them.
-  tokens: themeTokens as ThemeTokens,
-  layout: themeLayout as unknown as ThemeLayout,
-  css: themeCss,
-  sounds: {
-    move: moveSound,
-    select: selectSound,
-    back: backSound,
-    launch: launchSound,
-    error: errorSound,
-  },
-  shaders: { aurora: auroraShader, nebula: nebulaShader },
-  assetsDir: '/themes/aura-default/assets',
-};
+/** The named theme, else the active one, else the default - never undefined. */
+function themeBundleFor(id?: string): ThemeBundle {
+  return THEMES[id ?? settings.themeId] ?? THEMES[themeManifest.id]!;
+}
 
 // ---- filtering ----------------------------------------------------------------------------------
 
@@ -272,6 +406,8 @@ export function resetMock(): void {
   timers.clear();
   library = SEEDS.map(seedToItem);
   settings = { ...defaultSettings };
+  desktopState = freshDesktopState();
+  mockIdSeq = 0;
 }
 
 // ---- api ---------------------------------------------------------------------------------------
@@ -431,14 +567,236 @@ export const mockApi: AuraApi = {
 
   activeSessions: async () => clone(activeSessions),
 
-  listThemes: async () => [clone(themeInfo)],
-  getTheme: async () => clone(themeBundle),
+  // ---- desktop ----------------------------------------------------------------------------
+
+  listDesktops: async () => clone(desktopState.desktops),
+  getDesktop: async (id) => clone(desktopState.desktops.find((d) => d.id === id) ?? null),
+
+  createDesktop: async (name) => {
+    const desktop: Desktop = {
+      id: nextId('desktop'),
+      name,
+      wallpaper: null,
+      grid: { cell: 96, gap: 16, snap: true, autoArrange: false },
+      sortOrder: desktopState.desktops.length,
+    };
+    desktopState.desktops = [...desktopState.desktops, desktop];
+    emitLocal('desktop://updated', { reason: 'desktop_created' });
+    return clone(desktop);
+  },
+
+  updateDesktop: async (desktop) => {
+    desktopState.desktops = desktopState.desktops.map((d) => (d.id === desktop.id ? desktop : d));
+    emitLocal('desktop://updated', { reason: 'desktop_updated' });
+    return clone(desktop);
+  },
+
+  deleteDesktop: async (id) => {
+    if (desktopState.desktops.length <= 1) {
+      throw { code: 'invalid', message: 'the last desktop cannot be deleted' };
+    }
+    desktopState.desktops = desktopState.desktops.filter((d) => d.id !== id);
+    desktopState.items = desktopState.items.filter((i) => i.desktopId !== id);
+    emitLocal('desktop://updated', { reason: 'desktop_deleted' });
+  },
+
+  listDesktopItems: async (desktopId) =>
+    clone(
+      desktopState.items
+        .filter((i) => i.desktopId === desktopId)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.y - b.y || a.x - b.x),
+    ),
+
+  addDesktopItem: async (input) => {
+    const item: DesktopItem = {
+      id: nextId('item'),
+      desktopId: input.desktopId,
+      kind: input.kind ?? 'shortcut',
+      targetId: input.targetId ?? null,
+      x: input.x ?? 0,
+      y: input.y ?? 0,
+      width: Math.max(1, input.width ?? 1),
+      height: Math.max(1, input.height ?? 1),
+      labelOverride: input.labelOverride ?? null,
+      iconOverride: input.iconOverride ?? null,
+      sortOrder: 0,
+    };
+    desktopState.items = [...desktopState.items, item];
+    emitLocal('desktop://updated', { reason: 'item_added' });
+    return clone(item);
+  },
+
+  updateDesktopItem: async (id, patch) => {
+    const current = desktopState.items.find((i) => i.id === id);
+    if (!current) throw { code: 'not_found', message: `desktop item \`${id}\`` };
+    // Absent means unchanged - mirrors the Rust patch semantics exactly.
+    const next: DesktopItem = {
+      ...current,
+      x: patch.x ?? current.x,
+      y: patch.y ?? current.y,
+      width: Math.max(1, patch.width ?? current.width),
+      height: Math.max(1, patch.height ?? current.height),
+      labelOverride: patch.labelOverride !== undefined ? patch.labelOverride : current.labelOverride,
+      iconOverride: patch.iconOverride !== undefined ? patch.iconOverride : current.iconOverride,
+      sortOrder: patch.sortOrder ?? current.sortOrder,
+    };
+    desktopState.items = desktopState.items.map((i) => (i.id === id ? next : i));
+    emitLocal('desktop://updated', { reason: 'item_moved' });
+    return clone(next);
+  },
+
+  removeDesktopItem: async (id) => {
+    desktopState.items = desktopState.items.filter((i) => i.id !== id);
+    emitLocal('desktop://updated', { reason: 'item_removed' });
+  },
+
+  // ---- folders ----------------------------------------------------------------------------
+
+  listFolders: async () => clone(desktopState.folders),
+  getFolder: async (id) => clone(desktopState.folders.find((f) => f.id === id) ?? null),
+
+  createFolder: async (input) => {
+    const kind = input.kind ?? 'filesystem';
+    if (kind === 'filesystem' && !input.path?.trim()) {
+      throw { code: 'invalid', message: 'a filesystem folder needs a path' };
+    }
+    const id = nextId('folder');
+    const slug = (input.label ?? id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const folder: Folder = {
+      id,
+      path:
+        kind === 'filesystem'
+          ? input.path!.trim()
+          : kind === 'collection'
+            ? `collection:${input.collectionId ?? id}`
+            : `smart:${slug || id}`,
+      label: input.label ?? null,
+      color: input.color ?? null,
+      icon: input.icon ?? null,
+      cover: input.cover ?? null,
+      layout: input.layout ?? 'grid',
+      shape: input.shape ?? null,
+      kind,
+      collectionId: input.collectionId ?? null,
+      filter: input.filter ?? null,
+      windowState: null,
+      sortOrder: desktopState.folders.length,
+    };
+    desktopState.folders = [...desktopState.folders, folder];
+    emitLocal('desktop://updated', { reason: 'folder_created' });
+    return clone(folder);
+  },
+
+  updateFolder: async (id, patch) => {
+    const current = desktopState.folders.find((f) => f.id === id);
+    if (!current) throw { code: 'not_found', message: `folder \`${id}\`` };
+    const pick = <T,>(next: T | null | undefined, prev: T | null): T | null =>
+      next !== undefined ? (next as T | null) : prev;
+    const next: Folder = {
+      ...current,
+      label: pick(patch.label, current.label),
+      color: pick(patch.color, current.color),
+      icon: pick(patch.icon, current.icon),
+      cover: pick(patch.cover, current.cover),
+      shape: pick(patch.shape, current.shape),
+      layout: patch.layout ?? current.layout,
+      filter: pick(patch.filter, current.filter),
+      collectionId: pick(patch.collectionId, current.collectionId),
+      windowState: pick(patch.windowState, current.windowState),
+      sortOrder: patch.sortOrder ?? current.sortOrder,
+    };
+    desktopState.folders = desktopState.folders.map((f) => (f.id === id ? next : f));
+    emitLocal('desktop://updated', { reason: 'folder_updated' });
+    return clone(next);
+  },
+
+  deleteFolder: async (id) => {
+    desktopState.folders = desktopState.folders.filter((f) => f.id !== id);
+    // Same pruning the core does: an item pointing at a gone folder would open nothing.
+    desktopState.items = desktopState.items.filter(
+      (i) => !(i.kind === 'folder' && i.targetId === id),
+    );
+    emitLocal('desktop://updated', { reason: 'folder_deleted' });
+  },
+
+  folderContents: async (id) => {
+    const folder = desktopState.folders.find((f) => f.id === id);
+    if (!folder) throw { code: 'not_found', message: `folder \`${id}\`` };
+    if (folder.kind === 'smart') return clone(applyFilter(library, folder.filter ?? undefined));
+    if (folder.kind === 'collection') return [];
+    return []; // filesystem: the browser is V2
+  },
+
+  // ---- taskbar ----------------------------------------------------------------------------
+
+  listTaskbarItems: async () =>
+    clone([...desktopState.taskbar].sort((a, b) => a.sortOrder - b.sortOrder)),
+
+  pinToTaskbar: async (targetId) => {
+    const existing = desktopState.taskbar.find(
+      (i) => i.kind === 'pinned' && i.targetId === targetId,
+    );
+    if (existing) return clone(existing);
+    const item: TaskbarItem = {
+      id: nextId('pin'),
+      kind: 'pinned',
+      targetId,
+      sortOrder: Math.max(-1, ...desktopState.taskbar.map((i) => i.sortOrder)) + 1,
+    };
+    desktopState.taskbar = [...desktopState.taskbar, item];
+    emitLocal('desktop://updated', { reason: 'taskbar_pinned' });
+    return clone(item);
+  },
+
+  unpinFromTaskbar: async (targetId) => {
+    desktopState.taskbar = desktopState.taskbar.filter(
+      (i) => !(i.kind === 'pinned' && i.targetId === targetId),
+    );
+    emitLocal('desktop://updated', { reason: 'taskbar_unpinned' });
+  },
+
+  reorderTaskbar: async (ids) => {
+    desktopState.taskbar = desktopState.taskbar.map((i) => {
+      const at = ids.indexOf(i.id);
+      return at < 0 ? i : { ...i, sortOrder: at };
+    });
+    emitLocal('desktop://updated', { reason: 'taskbar_reordered' });
+  },
+
+  /*
+   * A slowly draining laptop, so the system area can be seen doing something in the browser.
+   * The real reading comes from `GetSystemPowerStatus`; this only has to be plausible and to
+   * exercise the same shapes - including a battery that is present but discharging.
+   */
+  getSystemStatus: async () => {
+    const minutes = Date.now() / 60000;
+    return {
+      batteryPercent: 40 + Math.round(40 * Math.abs(Math.sin(minutes / 30))),
+      charging: Math.floor(minutes / 5) % 2 === 0,
+      hasBattery: true,
+    };
+  },
+
+  listThemes: async () => Object.values(THEMES).map((bundle) => clone(bundle.info)),
+  getTheme: async (id) => clone(themeBundleFor(id)),
   setActiveTheme: async (id) => {
+    // Mirrors the core: an unknown theme is refused *before* `themeId` is written, so a bad
+    // id can never be stored and then fail on every start.
+    const bundle = THEMES[id];
+    if (!bundle) throw { code: 'not_found', message: `theme \`${id}\`` };
     settings = { ...settings, themeId: id };
     saveSettings(settings);
     emitLocal('theme://changed', { themeId: id });
-    return clone(themeBundle);
+    return clone(bundle);
   },
+
+  // A browser has no global shortcuts, so the mock reports the honest answer: not registered,
+  // with a reason. That keeps the "hotkey is not armed" UI path visible during `npm run dev`.
+  getExitHotkeyStatus: async () => ({
+    accelerator: settings.exitHotkey,
+    registered: false,
+    error: 'global shortcuts are only available in the desktop app',
+  }),
 
   getMonitors: async () => [
     { name: 'Mock Display', x: 0, y: 0, width: 1920, height: 1080, scaleFactor: 1, primary: true },

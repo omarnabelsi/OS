@@ -10,14 +10,24 @@ revision after V1 prototype review.
 
 ## Section 01 - What we are building
 
-Aura Shell is a fullscreen, gamepad-friendly, deeply themeable shell layer that sits on top of
-Windows and replaces the visual desktop experience. Instead of a taskbar, desktop icons and
-Explorer windows, the user sees a console interface: a horizontal nav bar, large artwork tiles
-for apps and games, an animated background, and a file browser with skinnable folders. Windows
-keeps running normally underneath - the same files, the same programs, the same drivers. Only
-the face of the machine changes.
+Aura Shell is a **customisable, Windows-inspired desktop shell**: a deeply themeable surface that
+sits on top of Windows and gives the user a desktop that is recognisably theirs. Wallpaper,
+freely placed folders and shortcuts, resizable windows, a configurable taskbar - all of it data,
+all of it skinnable. Windows keeps running normally underneath: the same files, the same
+programs, the same drivers. Only the face of the machine changes.
 
-### How it differs from what already exists
+Games are one of the things that live on that desktop. They are not its purpose.
+
+### The repositioning (revised, superseding the launcher framing)
+
+This started as "a console launcher that also has files": a fixed nav bar, rows of artwork tiles,
+one full-screen view at a time. That is a narrower product than the parts add up to. Rows of game
+tiles are a *view*, and a launcher is one app among several - so the home screen became a desktop,
+folders open in **windows** rather than replacing the screen, and a taskbar carries what is
+pinned and what is running.
+
+The consequence is a different competitive set. The launcher comparison still holds for the
+library half, but the products this now sits beside are the Windows customisation tools:
 
 | Product | What it does | What it does not do |
 | --- | --- | --- |
@@ -25,12 +35,25 @@ the face of the machine changes.
 | Playnite Fullscreen | Multi-store game library, skinnable, open source | Games only - no file manager, no shell takeover, no animated wallpaper engine |
 | LaunchBox / BigBox | Emulator-focused front end with themes | Heavy, retro-focused, paid, not a desktop replacement |
 | Wallpaper Engine / Lively | Animated wallpapers on the Windows desktop | Wallpaper only - no UI, no launcher, no navigation |
-| **Aura Shell** | All four at once: launcher + file shell + wallpaper engine + theme platform | This combination does not exist today. That is the opening. |
+| Rainmeter | Scriptable desktop widgets and skins | Widgets only - no windows, no folders, no launcher; a config-file culture, not a product |
+| StartAllBack / ExplorerPatcher | Restores and retunes the real Windows taskbar and Start menu | Patches Explorer rather than replacing it; no wallpaper engine, no library, breaks on Windows updates |
+| Nexus / ObjectDock (Stardock) | Docks and desktop enhancement | Individual components, sold separately, not one coherent themeable system |
+| **Aura Shell** | Desktop surface + window manager + taskbar + launcher + wallpaper engine, as one theme-driven system | No one does the whole surface coherently. That is the opening. |
+
+The distinction from Rainmeter and StartAllBack is worth stating plainly, because it is the whole
+argument: those tools decorate or patch the desktop Windows already draws. Aura Shell draws its
+own, so a single theme changes the wallpaper, the folders, the windows and the taskbar together.
 
 ### The one-sentence pitch
 
-> "Wallpaper Engine skins your background. Playnite skins your games. Aura Shell skins your whole
-> computer - and you drive it with a controller from the sofa."
+> "Wallpaper Engine skins your background. Rainmeter bolts widgets onto your desktop. Aura Shell
+> *is* the desktop - folders, windows, taskbar and all - and one theme changes every bit of it."
+
+### What this is not
+
+Overlay Mode only. Aura Shell draws its own desktop **on top of** Windows; it does not register
+as the system shell, does not hide the real taskbar, and does not touch `Winlogon`. A convincing
+desktop makes that temptation stronger, not weaker - see risk register R3 and R11.
 
 ### Core product principles
 

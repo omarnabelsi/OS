@@ -43,4 +43,7 @@ fn default_true() -> bool {
 }
 
 /// The five sound slots every theme should fill (missing ones fall back to the default theme).
+///
+/// This is the complete set, not a starting point: `loader` drops any other slot a manifest
+/// declares. Short interface sounds are the only audio the app plays - there is no music slot.
 pub const SOUND_SLOTS: [&str; 5] = ["move", "select", "back", "launch", "error"];

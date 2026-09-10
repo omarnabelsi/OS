@@ -35,6 +35,25 @@ export function flattenTokens(tokens: ThemeTokens | null | undefined): Record<st
   return out;
 }
 
+/** Matches the `--tile-focus-scale` fallback in base.css, for when a theme declares none. */
+export const DEFAULT_TILE_FOCUS_SCALE = 1.08;
+
+/**
+ * How far a focused tile scales up, from `tile.focusScale`.
+ *
+ * Read from the token rather than hard-coded in `Tile.tsx`, because the CSS that reserves room
+ * for the enlarged tile (`--tile-focus-bleed` in shell.css) is derived from the same number. If
+ * the two ever disagree the label gets covered by the artwork, which is exactly the bug this
+ * exists to prevent. A value outside a sane range falls back instead of breaking the layout.
+ */
+export function focusScaleFrom(tokens: ThemeTokens | null | undefined): number {
+  const raw = tokens?.tile?.focusScale;
+  const parsed = typeof raw === 'number' ? raw : Number.parseFloat(String(raw ?? ''));
+  return Number.isFinite(parsed) && parsed >= 1 && parsed <= 1.5
+    ? parsed
+    : DEFAULT_TILE_FOCUS_SCALE;
+}
+
 /** Pixel width for the user's tile-size preference, falling back to the theme's base width. */
 export function tileWidthFor(vars: Record<string, string>, size: TileSize): string | null {
   const named = vars[`--tile-width-${size}`];
@@ -59,14 +78,18 @@ export function cssVariables(
 ): Record<string, string> {
   const vars = flattenTokens(tokens);
 
-  const width = tileWidthFor(vars, overrides.tileSize);
-  if (width) vars['--tile-width'] = width;
-
   if (overrides.accentColor) vars['--color-accent'] = overrides.accentColor;
 
   // Clamped defensively: settings validation also enforces this range, but a theme or a stale
   // stored value must never be able to render the UI unusable.
-  vars['--ui-scale'] = String(Math.min(2, Math.max(0.5, overrides.uiScale || 1)));
+  const scale = Math.min(2, Math.max(0.5, overrides.uiScale || 1));
+  vars['--ui-scale'] = String(scale);
+
+  // Tiles scale with the UI too. Text is sized in `rem`, which follows `--ui-scale` through the
+  // root font-size (base.css), so a fixed-px tile would end up with a caption far too big for
+  // it at 2x. The separate "Tile size" setting is what changes tiles independently.
+  const width = tileWidthFor(vars, overrides.tileSize);
+  if (width) vars['--tile-width'] = `calc(${width} * var(--ui-scale))`;
 
   return vars;
 }

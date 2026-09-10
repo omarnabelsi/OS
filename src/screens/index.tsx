@@ -3,10 +3,10 @@
  * is the whole navigation model.
  */
 
+import { DesktopSurface } from '@/components/desktop/DesktopSurface';
 import { Icon, type IconName } from '@/components/Icon';
 import { useUiStore, type ScreenId } from '@/store';
 
-import { HomeScreen } from './HomeScreen';
 import { LibraryScreen } from './LibraryScreen';
 import { SettingsScreen } from './SettingsScreen';
 
@@ -38,7 +38,9 @@ export function Screen(): React.JSX.Element {
 
   switch (screen satisfies ScreenId) {
     case 'home':
-      return <HomeScreen />;
+      // Home is the desktop now, not a stack of tile rows. The rows live on as smart folders
+      // you can open, move and re-skin - see docs/PLAN.md section 01.
+      return <DesktopSurface />;
     case 'games':
       return (
         <LibraryScreen
@@ -64,8 +66,11 @@ export function Screen(): React.JSX.Element {
       );
     case 'media':
       return (
+        // Wallpapers only, deliberately. Aura Shell plays no music or soundtracks, so this screen
+        // must not promise a player it will never have - see docs/DEVELOPMENT.md.
         <ComingSoonScreen icon="media" title="Media">
-          Video and music playback, plus wallpaper management for the animated backgrounds.
+          Wallpaper management for the animated backgrounds: pick a clip or a shader, preview it and
+          set it per monitor.
         </ComingSoonScreen>
       );
     case 'settings':

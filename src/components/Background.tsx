@@ -4,9 +4,13 @@
  * The source is the user's `wallpaper` setting, falling back to whatever the theme declares in
  * `layout.json` (`background`, then `fallbackBackground`). Whatever renders, a flat themed colour
  * sits underneath it, so there is never a white flash or a hole if an image or shader fails.
+ *
+ * A video wallpaper is always silent. This is the only element in the app that could carry an
+ * audio track, and Aura Shell plays no music - so the mute is hard-coded here rather than
+ * configurable, and `useSilentVideo` holds it there.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import type { ThemeLayout, WallpaperSetting } from '@/bridge';
 import { assetUrl } from '@/lib/assetUrl';
@@ -44,11 +48,38 @@ function wallpaperUrl(path: string, assetsDir: string | undefined): string | und
   return assetUrl(base ? `${base}/${path}` : path);
 }
 
+/**
+ * Pins a video wallpaper silent, and keeps it that way.
+ *
+ * The `muted` attribute alone is the contract, but it is one property assignment away from being
+ * undone, and a wallpaper is the only element in the app that could ever carry an audio track. So
+ * the volume is zeroed too and both are re-applied if anything ever changes them - the app has no
+ * music playback, and a video wallpaper must not become a loophole for one.
+ */
+function useSilentVideo(): (element: HTMLVideoElement | null) => (() => void) | undefined {
+  return useCallback((element: HTMLVideoElement | null) => {
+    if (!element) return;
+    const silence = () => {
+      element.muted = true;
+      element.volume = 0;
+    };
+    // Setting a value it already holds fires nothing, so this settles rather than looping.
+    silence();
+    element.addEventListener('volumechange', silence);
+    element.addEventListener('loadedmetadata', silence);
+    return () => {
+      element.removeEventListener('volumechange', silence);
+      element.removeEventListener('loadedmetadata', silence);
+    };
+  }, []);
+}
+
 export function Background(): React.JSX.Element {
   const { bundle } = useTheme();
   const settings = useSettingsStore((s) => s.settings);
   const focusedId = useUiStore((s) => s.focusedItemId);
   const focused = useLibraryStore((s) => (focusedId ? s.byId[focusedId] : undefined));
+  const silenceVideo = useSilentVideo();
 
   const wallpaper = useMemo(
     () => resolveWallpaper(settings?.wallpaper, bundle?.layout),
@@ -84,11 +115,13 @@ export function Background(): React.JSX.Element {
 
       {wallpaper.kind === 'video' ? (
         <video
+          ref={silenceVideo}
           className="aura-background-layer aura-background-image"
           src={wallpaperUrl(wallpaper.path, bundle?.assetsDir)}
           autoPlay={!reduceMotion}
           loop
-          muted={wallpaper.muted}
+          // Never configurable. A wallpaper is a moving picture; the app plays no music.
+          muted
           playsInline
         />
       ) : null}

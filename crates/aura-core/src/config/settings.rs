@@ -6,7 +6,52 @@ use serde::{Deserialize, Serialize};
 use crate::error::{CoreError, Result};
 
 pub const DEFAULT_THEME_ID: &str = "aura-default";
-pub const DEFAULT_EXIT_HOTKEY: &str = "Ctrl+Shift+Escape";
+
+/// The exit hotkey.
+///
+/// NOT `Ctrl+Shift+Escape`, which was the default until it turned out Windows reserves it for Task
+/// Manager: the OS consumes it before any application sees it, so `RegisterHotKey` refuses it on
+/// every machine and the documented escape hatch never worked once. See [`is_reserved_hotkey`].
+pub const DEFAULT_EXIT_HOTKEY: &str = "Ctrl+Alt+Q";
+
+/// Accelerators the OS keeps for itself, lowercased and stripped of spaces.
+///
+/// Registering one of these always fails, so refusing them at the settings layer turns a silent
+/// dead binding into an error the user can act on.
+const RESERVED_HOTKEYS: [&str; 8] = [
+    "ctrl+shift+escape", // Task Manager
+    "ctrl+alt+delete",   // Secure Attention Sequence
+    "ctrl+escape",       // Start menu
+    "alt+tab",
+    "alt+escape",
+    "super+l", // Lock; also spelled Win/Meta/Cmd - normalised below
+    "super+tab",
+    "super+d",
+];
+
+/// True when Windows (or the desktop environment) will not hand this accelerator to an app.
+///
+/// Comparison is case-insensitive, whitespace-insensitive, and normalises the several spellings
+/// the shortcut plugin accepts for the same modifier.
+pub fn is_reserved_hotkey(accelerator: &str) -> bool {
+    let normalised: String = accelerator
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(|c| c.to_lowercase())
+        .collect();
+    let normalised = normalised
+        .replace("control+", "ctrl+")
+        .replace("cmdorctrl+", "ctrl+")
+        .replace("command+", "super+")
+        .replace("meta+", "super+")
+        .replace("win+", "super+")
+        .replace("delete", "del")
+        .replace("escape", "esc");
+
+    RESERVED_HOTKEYS
+        .iter()
+        .any(|r| r.replace("delete", "del").replace("escape", "esc") == normalised)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -18,18 +63,26 @@ pub enum TileSize {
 }
 
 /// What is rendered behind the UI.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Aura Shell has no audio playback beyond the short interface sounds in `src/sound`: there is
+/// deliberately no way to play a soundtrack or any other music. A video wallpaper is therefore a
+/// moving picture and nothing else - the variant carries no `muted` flag, so neither a setting nor
+/// a (community, untrusted) theme can ask for its audio track. The UI hard-mutes the element to
+/// match; see `src/components/Background.tsx`.
+///
+/// A `muted` key left over in a stored settings document or a theme's `layout.background` is
+/// ignored rather than rejected, so old configs and older themes still load.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WallpaperSetting {
     /// Use whatever the active theme declares in `layout.json`.
+    #[default]
     Theme,
     Image {
         path: String,
     },
     Video {
         path: String,
-        #[serde(default = "default_true")]
-        muted: bool,
     },
     /// A shader shipped by the active theme (`shaders/<id>.frag`).
     Shader {
@@ -38,16 +91,6 @@ pub enum WallpaperSetting {
     Color {
         hex: String,
     },
-}
-
-fn default_true() -> bool {
-    true
-}
-
-impl Default for WallpaperSetting {
-    fn default() -> Self {
-        WallpaperSetting::Theme
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -60,12 +103,10 @@ pub struct Settings {
     pub tile_size: TileSize,
     /// 0.5 ..= 2.0
     pub ui_scale: f32,
-    /// 0.0 ..= 1.0
+    /// 0.0 ..= 1.0. Interface sounds only - there is no music track to set a level for.
     pub sound_volume: f32,
-    /// 0.0 ..= 1.0 (background music / video audio)
-    pub music_volume: f32,
     pub sounds_enabled: bool,
-    /// Global shortcut string in Tauri format, e.g. `Ctrl+Shift+Escape`.
+    /// Global shortcut string in Tauri format, e.g. `Ctrl+Alt+Q`. Must not be OS-reserved.
     pub exit_hotkey: String,
     pub steamgriddb_api_key: Option<String>,
     pub hide_shell_on_launch: bool,
@@ -77,6 +118,30 @@ pub struct Settings {
     pub reduce_motion: bool,
     pub scan_on_startup: bool,
     pub language: String,
+    pub taskbar_visible: bool,
+    pub taskbar_position: TaskbarPosition,
+    pub taskbar_alignment: TaskbarAlignment,
+}
+
+/// Which edge the taskbar is docked to. This is Aura's own taskbar inside the shell window -
+/// the real Windows taskbar is never moved or hidden (docs/RISKS.md R3, R13).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskbarPosition {
+    Top,
+    #[default]
+    Bottom,
+    Left,
+    Right,
+}
+
+/// Where the buttons sit along that edge. Windows 11 centres them; Windows 10 did not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskbarAlignment {
+    Start,
+    #[default]
+    Center,
 }
 
 impl Default for Settings {
@@ -88,7 +153,6 @@ impl Default for Settings {
             tile_size: TileSize::Medium,
             ui_scale: 1.0,
             sound_volume: 0.6,
-            music_volume: 0.3,
             sounds_enabled: true,
             exit_hotkey: DEFAULT_EXIT_HOTKEY.to_string(),
             steamgriddb_api_key: None,
@@ -100,6 +164,9 @@ impl Default for Settings {
             reduce_motion: false,
             scan_on_startup: true,
             language: "en".to_string(),
+            taskbar_visible: true,
+            taskbar_position: TaskbarPosition::Bottom,
+            taskbar_alignment: TaskbarAlignment::Center,
         }
     }
 }
@@ -129,10 +196,8 @@ impl Settings {
         if !(0.5..=2.0).contains(&self.ui_scale) {
             return Err(CoreError::Invalid("uiScale must be between 0.5 and 2.0".into()));
         }
-        for (name, v) in [("soundVolume", self.sound_volume), ("musicVolume", self.music_volume)] {
-            if !(0.0..=1.0).contains(&v) {
-                return Err(CoreError::Invalid(format!("{name} must be between 0 and 1")));
-            }
+        if !(0.0..=1.0).contains(&self.sound_volume) {
+            return Err(CoreError::Invalid("soundVolume must be between 0 and 1".into()));
         }
         if let Some(hex) = &self.accent_color {
             if !is_hex_color(hex) {
@@ -150,8 +215,29 @@ impl Settings {
         if self.exit_hotkey.trim().is_empty() {
             return Err(CoreError::Invalid("exitHotkey must not be empty".into()));
         }
+        if is_reserved_hotkey(&self.exit_hotkey) {
+            return Err(CoreError::Invalid(format!(
+                "`{}` is reserved by the operating system and can never be registered - \
+                 pick another combination",
+                self.exit_hotkey
+            )));
+        }
         Ok(())
     }
+}
+
+/// Replace an exit hotkey the OS will never grant with the default. True when it changed.
+///
+/// Existing installs have `Ctrl+Shift+Escape` written into their settings row from when that was
+/// the default. Loading it back would leave the escape hatch dead on exactly the machines that
+/// have been running longest, and the user has no reason to suspect the stored value is the
+/// problem - so repair it once, on load.
+pub fn repair_exit_hotkey(settings: &mut Settings) -> bool {
+    if !is_reserved_hotkey(&settings.exit_hotkey) {
+        return false;
+    }
+    settings.exit_hotkey = DEFAULT_EXIT_HOTKEY.to_string();
+    true
 }
 
 pub fn is_hex_color(s: &str) -> bool {
@@ -183,11 +269,105 @@ mod tests {
     }
 
     #[test]
+    fn the_default_exit_hotkey_is_one_an_app_can_actually_register() {
+        let s = Settings::default();
+        assert!(
+            !is_reserved_hotkey(&s.exit_hotkey),
+            "the default escape hatch must not be an OS-reserved combination"
+        );
+        s.validate().expect("the defaults must be valid");
+    }
+
+    #[test]
+    fn reserved_hotkeys_are_refused_however_they_are_spelled() {
+        for spelling in [
+            "Ctrl+Shift+Escape",
+            "ctrl+shift+escape",
+            "Control+Shift+Escape",
+            "CmdOrCtrl+Shift+Esc",
+            " Ctrl + Shift + Escape ",
+            "Ctrl+Alt+Delete",
+            "Win+L",
+            "Meta+L",
+            "Alt+Tab",
+        ] {
+            assert!(is_reserved_hotkey(spelling), "`{spelling}` must be recognised as reserved");
+            let mut s = Settings::default();
+            assert!(
+                s.apply_patch(serde_json::json!({ "exitHotkey": spelling })).is_err(),
+                "`{spelling}` must not be storable"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stored_reserved_hotkey_is_repaired_on_load() {
+        // What an install created before Ctrl+Shift+Escape was known to be unusable looks like.
+        let stored = serde_json::json!({ "exitHotkey": "Ctrl+Shift+Escape" });
+        let mut loaded: Settings =
+            serde_json::from_value(stored).expect("an old document must still load");
+        assert_eq!(loaded.exit_hotkey, "Ctrl+Shift+Escape", "loading does not validate");
+
+        assert!(repair_exit_hotkey(&mut loaded), "a reserved hotkey must be reported as changed");
+        assert_eq!(loaded.exit_hotkey, DEFAULT_EXIT_HOTKEY);
+        loaded.validate().expect("the repaired document must be valid");
+
+        // A hotkey the user deliberately chose is left alone.
+        let mut fine = Settings { exit_hotkey: "Ctrl+Shift+F12".into(), ..Default::default() };
+        assert!(!repair_exit_hotkey(&mut fine));
+        assert_eq!(fine.exit_hotkey, "Ctrl+Shift+F12");
+    }
+
+    #[test]
+    fn ordinary_combinations_are_allowed() {
+        for ok in ["Ctrl+Alt+Q", "Ctrl+Shift+Q", "Alt+F4", "Ctrl+Alt+Backspace", "Ctrl+Shift+F12"] {
+            assert!(!is_reserved_hotkey(ok), "`{ok}` should be allowed");
+            let mut s = Settings::default();
+            s.apply_patch(serde_json::json!({ "exitHotkey": ok })).expect("should store");
+            assert_eq!(s.exit_hotkey, ok);
+        }
+    }
+
+    #[test]
     fn wallpaper_is_tagged() {
-        let w = WallpaperSetting::Video { path: "c:/x.mp4".into(), muted: true };
+        let w = WallpaperSetting::Video { path: "c:/x.mp4".into() };
         let v = serde_json::to_value(&w).unwrap();
         assert_eq!(v["kind"], "video");
-        let parsed: WallpaperSetting = serde_json::from_value(serde_json::json!({ "kind": "video", "path": "a" })).unwrap();
-        assert_eq!(parsed, WallpaperSetting::Video { path: "a".into(), muted: true });
+        let parsed: WallpaperSetting =
+            serde_json::from_value(serde_json::json!({ "kind": "video", "path": "a" })).unwrap();
+        assert_eq!(parsed, WallpaperSetting::Video { path: "a".into() });
+    }
+
+    /// The product rule: nothing can ask Aura Shell to play audio. A video wallpaper is a picture.
+    #[test]
+    fn a_video_wallpaper_cannot_carry_an_audio_request() {
+        // A stored setting or an older theme's `layout.background` may still say `muted: false`.
+        // It has to load - dropping the user's wallpaper would be worse - and it has to be
+        // ignored, not honoured.
+        let stored = serde_json::json!({ "kind": "video", "path": "c:/x.mp4", "muted": false });
+        let parsed: WallpaperSetting = serde_json::from_value(stored).unwrap();
+        assert_eq!(parsed, WallpaperSetting::Video { path: "c:/x.mp4".into() });
+
+        // And it must not come back on the way out, so nothing downstream can read it either.
+        let out = serde_json::to_value(&parsed).unwrap();
+        assert!(out.get("muted").is_none(), "serialised wallpaper must not mention audio");
+    }
+
+    /// `musicVolume` is gone with it. An old settings row keeps loading; a live patch does not.
+    #[test]
+    fn music_volume_is_not_a_setting() {
+        let stored = serde_json::json!({
+            "themeId": "aura-default",
+            "soundVolume": 0.5,
+            "musicVolume": 0.9
+        });
+        let loaded: Settings = serde_json::from_value(stored).expect("an old document must load");
+        assert_eq!(loaded.sound_volume, 0.5);
+
+        let mut s = Settings::default();
+        assert!(
+            s.apply_patch(serde_json::json!({ "musicVolume": 0.9 })).is_err(),
+            "the UI must not be able to set a music level that does nothing"
+        );
     }
 }

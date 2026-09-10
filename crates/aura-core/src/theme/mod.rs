@@ -65,7 +65,7 @@ impl ThemeService {
             }
         }
 
-        out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        out.sort_by_key(|t| t.name.to_lowercase());
         Ok(out)
     }
 
@@ -108,7 +108,8 @@ mod tests {
             ),
         )
         .unwrap();
-        std::fs::write(dir.join("tokens.json"), r#"{"color":{"accent":"#fff"}}"#).unwrap();
+        // r##"..."## because the JSON contains `"#` (a hex colour), which would close an r#".
+        std::fs::write(dir.join("tokens.json"), r##"{"color":{"accent":"#fff"}}"##).unwrap();
         dir
     }
 

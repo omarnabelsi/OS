@@ -36,8 +36,15 @@ npm install
 npm run dev          # http://localhost:1420
 ```
 
-Arrow keys or WASD to move, Enter to launch, `M` for the item menu, `PageUp`/`PageDown` to change
-screen, Escape to go back. A plugged-in gamepad works too.
+Arrow keys or WASD to move, Enter to launch or open a folder, `M` for the item menu,
+`PageUp`/`PageDown` to change screen, Escape to go back. With windows open, `Ctrl+Tab` and
+`Ctrl+Shift+Tab` move between them and `F6` steps between the desktop and the front window. A
+plugged-in gamepad works too — the shoulder triggers switch windows.
+
+Folders open as windows (grid, list or covers), and the gear in a folder's toolbar opens its
+editor. Settings is a window too, with a search box that finds any setting; the taskbar can sit on
+any edge. Two themes ship — **Aura** (dark glass) and **Paper** (a light desk) — switch between them
+in Settings → Appearance → Theme.
 
 ## Build the real thing
 

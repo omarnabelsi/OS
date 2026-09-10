@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <!-- Warm paper: a soft light from the top left, a faint terracotta wash in the far corner,
+       and a dot grid light enough to read as texture rather than pattern. -->
+  <defs>
+    <radialGradient id="light" cx="0.18" cy="0.12" r="0.9">
+      <stop offset="0" stop-color="#fffaf1"/>
+      <stop offset="0.6" stop-color="#f3eee4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="warm" cx="0.92" cy="0.95" r="0.55">
+      <stop offset="0" stop-color="#c2410c" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#c2410c" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="14" cy="14" r="1.1" fill="#3c2814" fill-opacity="0.09"/>
+    </pattern>
+  </defs>
+  <rect width="1920" height="1080" fill="#f3eee4"/>
+  <rect width="1920" height="1080" fill="url(#light)"/>
+  <rect width="1920" height="1080" fill="url(#warm)"/>
+  <rect width="1920" height="1080" fill="url(#dots)"/>
+</svg>

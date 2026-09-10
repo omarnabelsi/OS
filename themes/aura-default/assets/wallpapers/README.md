@@ -12,7 +12,11 @@ H.264 / VP9 / AV1 in hardware).
 A theme that wants to ship its own clip can drop it in this folder and set
 
 ```json
-"background": { "kind": "video", "path": "assets/wallpapers/<file>.webm", "muted": true }
+"background": { "kind": "video", "path": "assets/wallpapers/<file>.webm" }
 ```
 
 in its `layout.json`. Keep the static image as `fallbackBackground` so first paint is instant.
+
+Video wallpapers are always played silent, and that is not configurable - the app has no music
+playback and a wallpaper is not a way to add some. Encode without an audio track and save the
+bytes.

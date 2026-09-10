@@ -22,9 +22,42 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
     state.core.settings()
 }
 
+/// Apply a settings patch, and keep the OS in step with it.
+///
+/// Changing `exitHotkey` used to change only the stored string and the label in Settings, while
+/// the real global shortcut stayed whatever was claimed at boot. It is re-registered here.
 #[tauri::command]
-pub fn update_settings(state: State<'_, AppState>, patch: serde_json::Value) -> CmdResult<Settings> {
-    state.core.update_settings(patch)
+pub fn update_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    patch: serde_json::Value,
+) -> CmdResult<Settings> {
+    let previous = state.core.settings();
+    let next = state.core.update_settings(patch)?;
+
+    if next.exit_hotkey != previous.exit_hotkey {
+        if let Err(e) = shell_host::hotkeys::bind_exit_hotkey(&app, &next.exit_hotkey) {
+            // The old accelerator is still claimed - `bind_exit_hotkey` registers before it
+            // releases - so put the stored value back to match, and let the UI say why. Ending
+            // up with a stored hotkey that nothing listens to is the failure we are avoiding.
+            let restore = serde_json::json!({ "exitHotkey": previous.exit_hotkey });
+            if let Err(e) = state.core.update_settings(restore) {
+                log::error!("could not restore the previous exit hotkey: {e}");
+            }
+            return Err(CoreError::Invalid(format!(
+                "`{}` could not be registered ({e}) - keeping `{}`",
+                next.exit_hotkey, previous.exit_hotkey
+            )));
+        }
+    }
+
+    Ok(next)
+}
+
+/// Whether the exit hotkey is actually armed. The UI checks this on startup and in Settings.
+#[tauri::command]
+pub fn get_exit_hotkey_status(state: State<'_, AppState>) -> shell_host::hotkeys::ExitHotkeyStatus {
+    shell_host::hotkeys::status(&state.core.settings().exit_hotkey)
 }
 
 // ---- library ----------------------------------------------------------------------------------
@@ -90,6 +123,139 @@ pub fn active_sessions(state: State<'_, AppState>) -> Vec<LaunchSession> {
     state.core.process.active_sessions()
 }
 
+// ---- desktop ----------------------------------------------------------------------------------
+//
+// Positions are grid cells, not pixels. Live window geometry is UI state and never comes through
+// here; only `folders.window_state`, written when a window settles, is persisted.
+
+#[tauri::command]
+pub fn list_desktops(state: State<'_, AppState>) -> CmdResult<Vec<Desktop>> {
+    state.core.list_desktops()
+}
+
+#[tauri::command]
+pub fn get_desktop(state: State<'_, AppState>, id: String) -> CmdResult<Option<Desktop>> {
+    state.core.get_desktop(&id)
+}
+
+#[tauri::command]
+pub fn create_desktop(state: State<'_, AppState>, name: String) -> CmdResult<Desktop> {
+    state.core.create_desktop(&name)
+}
+
+#[tauri::command]
+pub fn update_desktop(state: State<'_, AppState>, desktop: Desktop) -> CmdResult<Desktop> {
+    state.core.update_desktop(&desktop)
+}
+
+#[tauri::command]
+pub fn delete_desktop(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.core.delete_desktop(&id)
+}
+
+#[tauri::command]
+pub fn list_desktop_items(
+    state: State<'_, AppState>,
+    desktop_id: String,
+) -> CmdResult<Vec<DesktopItem>> {
+    state.core.list_desktop_items(&desktop_id)
+}
+
+#[tauri::command]
+pub fn add_desktop_item(
+    state: State<'_, AppState>,
+    input: NewDesktopItem,
+) -> CmdResult<DesktopItem> {
+    state.core.add_desktop_item(input)
+}
+
+/// Absent fields are left alone, so a drop sends `{ x, y }` and nothing else.
+#[tauri::command]
+pub fn update_desktop_item(
+    state: State<'_, AppState>,
+    id: String,
+    patch: DesktopItemPatch,
+) -> CmdResult<DesktopItem> {
+    state.core.update_desktop_item(&id, patch)
+}
+
+#[tauri::command]
+pub fn remove_desktop_item(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.core.remove_desktop_item(&id)
+}
+
+// ---- folders ----------------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn list_folders(state: State<'_, AppState>) -> CmdResult<Vec<Folder>> {
+    state.core.list_folders()
+}
+
+#[tauri::command]
+pub fn get_folder(state: State<'_, AppState>, id: String) -> CmdResult<Option<Folder>> {
+    state.core.get_folder(&id)
+}
+
+#[tauri::command]
+pub fn create_folder(state: State<'_, AppState>, input: NewFolder) -> CmdResult<Folder> {
+    state.core.create_folder(input)
+}
+
+#[tauri::command]
+pub fn update_folder(
+    state: State<'_, AppState>,
+    id: String,
+    patch: FolderPatch,
+) -> CmdResult<Folder> {
+    state.core.update_folder(&id, patch)
+}
+
+#[tauri::command]
+pub fn delete_folder(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.core.delete_folder(&id)
+}
+
+/// What is inside a folder: a smart filter's results, a collection's members, or an empty list
+/// for a filesystem folder until the V2 browser lands.
+#[tauri::command]
+pub fn folder_contents(state: State<'_, AppState>, id: String) -> CmdResult<Vec<LibraryItem>> {
+    state.core.folder_contents(&id)
+}
+
+// ---- taskbar ----------------------------------------------------------------------------------
+
+/// Pinned and structural items only. "Running" is derived in the UI from open windows and
+/// `active_sessions`, so it can never be stale.
+#[tauri::command]
+pub fn list_taskbar_items(state: State<'_, AppState>) -> CmdResult<Vec<TaskbarItem>> {
+    state.core.list_taskbar_items()
+}
+
+#[tauri::command]
+pub fn pin_to_taskbar(state: State<'_, AppState>, target_id: String) -> CmdResult<TaskbarItem> {
+    state.core.pin_to_taskbar(&target_id)
+}
+
+#[tauri::command]
+pub fn unpin_from_taskbar(state: State<'_, AppState>, target_id: String) -> CmdResult<()> {
+    state.core.unpin_from_taskbar(&target_id)
+}
+
+#[tauri::command]
+pub fn reorder_taskbar(state: State<'_, AppState>, ids: Vec<String>) -> CmdResult<()> {
+    state.core.reorder_taskbar(ids)
+}
+
+/// The power state behind the taskbar's system area. Polled by the UI; deliberately cheap.
+///
+/// Returns a value rather than a `Result`: there is no failure a caller could act on, and a
+/// system area that vanished because a status read errored would be worse than one showing
+/// nothing.
+#[tauri::command]
+pub fn get_system_status(state: State<'_, AppState>) -> SystemStatus {
+    state.core.system_status()
+}
+
 // ---- themes -----------------------------------------------------------------------------------
 
 #[tauri::command]
@@ -118,14 +284,19 @@ pub fn get_monitors(app: AppHandle) -> CmdResult<Vec<MonitorInfo>> {
 
 #[tauri::command]
 pub fn set_fullscreen(window: WebviewWindow, fullscreen: bool) -> CmdResult<()> {
-    window.set_fullscreen(fullscreen).map_err(|e| CoreError::Other(e.to_string()))
+    window.set_fullscreen(fullscreen).map_err(|e| CoreError::Other(e.to_string()))?;
+    // So minimise-for-launch and restore-after-launch agree with what the UI just asked for.
+    shell_host::window::remember_fullscreen(fullscreen);
+    Ok(())
 }
 
 /// The UI calls this once its first frame is painted; the window is created hidden to avoid a
-/// white flash and is shown here.
+/// white flash and is shown here. Fullscreen is re-asserted at the same time, because a hidden
+/// window does not reliably take the resize.
 #[tauri::command]
-pub fn shell_ready(window: WebviewWindow) -> CmdResult<()> {
-    shell_host::window::reveal(&window).map_err(|e| CoreError::Other(e.to_string()))
+pub fn shell_ready(window: WebviewWindow, state: State<'_, AppState>) -> CmdResult<()> {
+    let fullscreen = shell_host::window::wants_fullscreen(&state.core.settings(), &state.args);
+    shell_host::window::reveal(&window, fullscreen).map_err(|e| CoreError::Other(e.to_string()))
 }
 
 #[tauri::command]

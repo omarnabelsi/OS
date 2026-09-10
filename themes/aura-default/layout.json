@@ -1,9 +1,23 @@
 {
-  "regions": ["background", "navBar", "hero", "tiles", "overlay"],
+  "regions": ["background", "desktop", "taskbar", "windows", "overlay"],
   "navBar": {
     "position": "top",
     "items": ["home", "games", "apps", "files", "media", "settings"]
   },
+  "desktop": {
+    "grid": { "cell": 96, "gap": 16, "snap": true },
+    "defaultItems": [
+      { "kind": "folder", "folder": "smart:games", "x": 0, "y": 0 },
+      { "kind": "folder", "folder": "smart:apps", "x": 0, "y": 1 },
+      { "kind": "folder", "folder": "smart:favourites", "x": 0, "y": 2 },
+      { "kind": "folder", "folder": "smart:recently-played", "x": 0, "y": 3 }
+    ]
+  },
+  "folderShapes": [
+    { "id": "rounded", "asset": "assets/folders/rounded.svg" },
+    { "id": "capsule", "asset": "assets/folders/capsule.svg" },
+    { "id": "tab", "asset": "assets/folders/tab.svg" }
+  ],
   "home": {
     "rows": [
       { "id": "recent", "title": "Recently played", "filter": { "sort": "last_played", "limit": 12 } },

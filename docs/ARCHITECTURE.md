@@ -34,7 +34,8 @@ a different UI toolkit) is a rewrite of one crate rather than of everything.
 ```text
 crates/aura-core/src/
   config/      Paths (AURA_DATA_DIR override) and the validated Settings document
-  db/          SQLite: schema.sql, migrations, one repository per table
+  db/          SQLite: schema.sql + schema_v2.sql, migrations, one repository per table
+  desktop/     The desktop surface: desktops, placed items, folders, taskbar, first-run seeding
   library/     Store scanners (Steam), the VDF parser, manual add, the scan job
   artwork/     SteamGridDB -> Steam CDN -> local cache -> artwork table
   process/     launch -> watch the process tree -> report the exit
@@ -51,9 +52,10 @@ src-tauri/src/
 
 src/
   bridge/      The IPC contract: types, api interface, tauri impl, browser mock
-  store/       zustand: library, settings, ui
+  store/       zustand: library, settings, ui, desktop
   focus/       Spatial navigation: pure geometry + the React provider
   input/       Key and gamepad bindings -> navigation actions
+  wm/          Window manager: pure geometry, window state, the layer that renders them
   theme/       Tokens -> CSS custom properties, theme.css injection
   sound/       Theme sound playback
   components/  Background, NavBar, Tile, Hero, Overlays, Shell
@@ -118,6 +120,16 @@ all-clear. Signal B is the one that actually catches Steam titles.
 
 ## The UI's own architecture
 
+**The desktop is data, and positions are cells.** `desktop/` owns the surface: which items sit
+where, what a folder is, what the taskbar carries. Item positions are stored in *grid cells*, so
+an arrangement made at 1080p survives a 4K monitor - `GridSettings.cell` is the only thing that
+knows about pixels. Folders come in three kinds: a real path (`filesystem`, the V2 browser), a
+hand-made group (`collection`), and a saved `EntryFilter` (`smart`). The last one is what the old
+home rows became, which is why nothing was lost when the home screen stopped being rows.
+
+Live window state deliberately is **not** in the database. Windows are UI state; the only
+geometry persisted is `folders.window_state`, written when a window settles.
+
 **Focus is a first-class concept, not DOM focus.** `src/focus/` keeps a registry of focusable
 elements and decides what is "to the right of" the current one geometrically
 (`geometry.ts`, pure and unit-tested). Rects are read live at the moment of a move, never cached:
@@ -125,6 +137,19 @@ tile rows scroll and the layout reflows, so a cached rect is stale within a fram
 
 Mouse hover moves the same focus rather than running a parallel highlight, so the hero panel and
 the colour bleed always describe the same item however the user is driving.
+
+**Windows are DOM elements, and focus scoping is what makes them work.** `src/wm/` follows the
+same split: `geometry.ts` is pure and tested on its own, `store.ts` holds the state, and
+`WindowLayer` is the only part that touches the DOM - it measures the area windows live in and
+sets the focus scope. That scope is the whole reason overlapping windows do not break the focus
+engine: the focused window claims `window:<id>`, and directional navigation is confined to it. A
+tile in a background window is geometrically "to the right of" one in the foreground, and must
+never be reachable that way. Moving *between* windows is therefore a separate, explicit action
+(`nextWindow` / `prevWindow` in `src/input`), never a direction.
+
+Window *content* comes from a registry keyed by kind, declared once in `Shell.tsx`. The window
+manager knows nothing about folders or Settings, so a new kind of window is a new entry in that
+object rather than a change to `src/wm/`.
 
 **The bridge is swappable.** `src/bridge/index.ts` picks `tauriApi` or `mockApi` from
 `isTauri()`. The mock is a real fake - a mutable library, localStorage settings, simulated scan
@@ -138,6 +163,9 @@ progress and launch events - so every screen can be built and demoed in a browse
 | A new store scanner (Epic, GOG) | `library/scanners/`, add to `scanners_for` and `supported_sources` |
 | A new IPC command | `Core` method -> `ipc/commands.rs` -> `bridge/api.ts` + both impls -> `docs/IPC.md` |
 | A new core event | `events.rs` `CoreEvent` + `name()` -> `bridge/types.ts` `CoreEventMap` -> `docs/IPC.md` |
-| A new setting | `config/settings.rs` (+ default + validation) -> `bridge/types.ts` -> a row in `SettingsScreen` |
-| A new theme token | `themes/aura-default/tokens.json`; it becomes `--group-key` automatically |
+| A new setting | `config/settings.rs` (+ default + validation) -> `bridge/types.ts` -> a row in `components/settings/catalog.tsx`, which both the Settings window and screen render |
+| A new theme token | Every theme in `themes/`; it becomes `--group-key` automatically. Document it in THEME_FORMAT |
+| A new bundled theme | A folder in `themes/`, a line in `theme:validate`, and an import in `bridge/mock.ts`; `tests/bundled_themes.rs` picks it up on its own |
 | A new screen | `src/screens/`, add to `NAV_ITEMS` in `store/ui.ts` and the switch in `screens/index.tsx` |
+| A new kind of window | A `WindowKind` in `wm/store.ts` + a renderer in `WINDOW_BODIES` (`Shell.tsx`); everything inside registers in the `window:<id>` focus group |
+| A new navigation action | `NavAction` in `input/actions.ts`, a binding, then a case in `InputProvider` |

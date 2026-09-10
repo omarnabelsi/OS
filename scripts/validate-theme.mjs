@@ -128,12 +128,46 @@ function validate(dir) {
     }
   }
 
+  // layout.json is handed to the UI verbatim and references assets, so its paths get the same
+  // safety rules as the manifest's. Mirrors `validate::sanitise_folder_shapes`, which drops
+  // offending entries at runtime; here they are surfaced before a theme ships (RISKS.md R5).
   const layoutPath = join(dir, 'layout.json');
   if (existsSync(layoutPath)) {
+    let layout = {};
     try {
-      JSON.parse(readFileSync(layoutPath, 'utf8'));
+      layout = JSON.parse(readFileSync(layoutPath, 'utf8'));
     } catch (e) {
       fail(`layout.json is not valid JSON: ${e.message}`);
+    }
+
+    const shapes = Array.isArray(layout.folderShapes) ? layout.folderShapes : [];
+    const seen = new Set();
+    for (const shape of shapes) {
+      const id = typeof shape?.id === 'string' ? shape.id : '';
+      if (!id.trim()) {
+        fail('a folderShapes entry has no `id`');
+        continue;
+      }
+      if (!isKebabCase(id)) fail(`folder shape id \`${id}\` must be kebab-case`);
+      if (seen.has(id)) warn(`folder shape \`${id}\` is declared more than once`);
+      seen.add(id);
+      checkAsset(dir, shape?.asset ?? '', `folder shape \`${id}\``);
+    }
+  }
+
+  // A theme with no backdrop blur must not leave the focused window translucent: with nothing
+  // blurred behind it, the desktop icons show straight through the window. Mirrors
+  // `validate::tokens` in the core; see docs/THEME_FORMAT.md.
+  {
+    const blur = tokens?.blur?.surface;
+    const opacity = tokens?.window?.opacity;
+    const noBlur = blur !== undefined && Number.parseFloat(String(blur)) === 0;
+    const translucent = opacity === undefined || Number.parseFloat(String(opacity)) < 100;
+    if (noBlur && translucent) {
+      warn(
+        '`blur.surface` is 0 but `window.opacity` is below 100%: the focused window will show the ' +
+          'desktop through it. Set `window.opacity` to "100%".',
+      );
     }
   }
 
@@ -141,6 +175,12 @@ function validate(dir) {
   for (const slot of SOUND_SLOTS) {
     if (!(manifest.sounds ?? {})[slot]) {
       warn(`no \`${slot}\` sound; the default theme's sound is used`);
+    }
+  }
+  // The app plays no music, so the five slots above are the whole set - the loader drops the rest.
+  for (const slot of Object.keys(manifest.sounds ?? {})) {
+    if (!SOUND_SLOTS.includes(slot)) {
+      warn(`unknown sound slot \`${slot}\`; it is ignored (there is no music or ambience slot)`);
     }
   }
 

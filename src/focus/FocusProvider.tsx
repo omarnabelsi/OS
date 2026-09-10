@@ -18,7 +18,14 @@ import {
   type ReactNode,
 } from 'react';
 
-import { firstInReadingOrder, nearestTo, pickInDirection, type Candidate, type Direction } from './geometry';
+import {
+  firstInReadingOrder,
+  nearestTo,
+  pickInDirection,
+  type Candidate,
+  type Direction,
+  type Rect,
+} from './geometry';
 
 export interface FocusableOptions {
   id: string;
@@ -40,6 +47,15 @@ export interface FocusContextValue {
   scope: string | null;
   setScope(group: string | null): void;
   register(entry: FocusEntry): () => void;
+  /**
+   * True once the pointer has genuinely moved.
+   *
+   * The shell opens fullscreen underneath wherever the cursor already was, and Chromium fires
+   * `mouseenter` for whatever element lands beneath it - which would move focus, and scroll the
+   * page to it, without the user having done anything. Requiring one real movement first makes
+   * hover mean hover.
+   */
+  pointerHasMoved(): boolean;
   focus(id: string): void;
   focusFirst(group?: string): boolean;
   move(direction: Direction): boolean;
@@ -48,9 +64,33 @@ export interface FocusContextValue {
 
 const FocusContext = createContext<FocusContextValue | null>(null);
 
-/** Keeps the focused tile on screen without yanking the page around. */
+/**
+ * Groups that are shell chrome rather than a surface the user came to use.
+ *
+ * The engine parks focus here for a frame during a screen change, because for that frame the nav
+ * bar is all that is registered - and it must move off again as soon as real content appears.
+ * This used to be spelled `group !== 'content'`, which silently stopped working the moment a
+ * second primary group existed (`desktop`, and shortly `taskbar` and `window:*`).
+ *
+ * The taskbar is chrome too. It sits at the bottom, so reading order rarely picks it first -
+ * but on a desktop with no icons it is the only thing registered, and the first focus of the
+ * session must not park on it and stay there once a surface appears.
+ */
+const CHROME_GROUPS: ReadonlySet<string> = new Set(['nav', 'taskbar']);
+
+const isChrome = (group: string | undefined): boolean => group !== undefined && CHROME_GROUPS.has(group);
+
+/**
+ * Keeps the focused tile on screen.
+ *
+ * `behavior: 'auto'`, not `'smooth'`: `move()` measures live rects, and a smooth scroll is still
+ * animating 300ms later, so a held direction key samples positions mid-flight and the geometry
+ * picks inconsistent neighbours - "it jumped to the middle of the row". Scrolling instantly
+ * makes every measurement describe where things actually are. The tile's own spring is harmless
+ * by comparison: it scales about the centre, and the geometry costs are centre-based.
+ */
 function revealElement(element: HTMLElement): void {
-  element.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  element.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' });
 }
 
 export function FocusProvider({ children }: { children: ReactNode }): React.JSX.Element {
@@ -99,17 +139,63 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
    */
   const autoPlacedRef = useRef(true);
 
+  /**
+   * Where focus was the last time it landed, recorded rather than read on demand.
+   *
+   * An entry that has left the registry has no element left to measure, and that is precisely
+   * when the recovery below needs a rect: without one it falls back to the first tile in reading
+   * order, which is the "it slid back to the first game" report.
+   */
+  const lastRectRef = useRef<Rect | null>(null);
+
+  /**
+   * False until the user actually drives focus (a key, the stick, the mouse).
+   *
+   * Startup places focus at least twice on its own: onto the nav bar, because for a frame that
+   * is all that is registered, then onto the first tile once content mounts. Neither follows an
+   * input, and scrolling for either drags the page before the user has asked for anything - on
+   * Home that pulled the rows up over the hero on first paint. Gating on real interaction
+   * rather than on "is this the first placement" covers the whole settling sequence, however
+   * many placements it takes.
+   *
+   * Recovery after an entry disappears mid-navigation still scrolls, because by then the user
+   * has navigated and the newly chosen tile does need to be brought on screen.
+   */
+  const userHasNavigatedRef = useRef(false);
+
+  // See `pointerHasMoved` on the context type.
+  const pointerMovedRef = useRef(false);
+  useEffect(() => {
+    const onMove = () => {
+      pointerMovedRef.current = true;
+    };
+    window.addEventListener('pointermove', onMove, { once: true, passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
+  }, []);
+  const pointerHasMoved = useCallback(() => pointerMovedRef.current, []);
+
   const applyFocus = useCallback((id: string) => {
     const entry = entries.current.get(id);
     if (!entry) return;
     autoPlacedRef.current = true;
     setFocusedId(id);
     entry.onFocus?.();
-    revealElement(entry.element);
+
+    if (userHasNavigatedRef.current) revealElement(entry.element);
+
+    // After any reveal, so the remembered rect is where the element ended up on screen.
+    lastRectRef.current = entry.element.getBoundingClientRect();
   }, []);
 
+  /**
+   * Focus something because the user asked: a move, a hover, a click.
+   *
+   * This is the only entry point that counts as interaction, which is what unlocks scrolling
+   * (see `userHasNavigatedRef`). Engine-driven placement goes through `applyFocus` directly.
+   */
   const focus = useCallback(
     (id: string) => {
+      userHasNavigatedRef.current = true;
       applyFocus(id);
       autoPlacedRef.current = false;
     },
@@ -175,13 +261,14 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
 
     const pool = candidates();
     if (pool.length === 0) return;
-    const content = pool.filter((c) => entries.current.get(c.id)?.group === 'content');
+    // Whatever surface is in play - tiles, desktop icons, settings rows - as opposed to chrome.
+    const content = pool.filter((c) => !isChrome(entries.current.get(c.id)?.group));
 
     if (current && current.element.isConnected && inScope) {
-      // Focus is valid. The one case worth revisiting: the engine parked it outside the content
-      // - on the nav bar - because there was nothing else registered at the time. As soon as
-      // content exists, move onto it. A focus the user placed is never overridden.
-      if (autoPlacedRef.current && current.group !== 'content' && content.length > 0) {
+      // Focus is valid. The one case worth revisiting: the engine parked it on chrome - the nav
+      // bar - because there was nothing else registered at the time. As soon as a surface
+      // exists, move onto it. A focus the user placed is never overridden.
+      if (autoPlacedRef.current && isChrome(current.group) && content.length > 0) {
         const first = firstInReadingOrder(content);
         if (first) applyFocus(first.id);
       }
@@ -189,25 +276,37 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
     }
 
     // Prefer whatever is nearest to where focus just was, so the eye is not thrown across the
-    // screen when an entry disappears or an overlay takes over.
-    const previousRect = current?.element.isConnected
-      ? current.element.getBoundingClientRect()
-      : null;
+    // screen when an entry disappears or an overlay takes over. When the entry itself is gone
+    // from the registry - a filter changed, a background scan re-sorted the list - the remembered
+    // rect stands in for it, rather than dropping straight to the first tile.
+    const previousRect =
+      current?.element.isConnected ? current.element.getBoundingClientRect() : lastRectRef.current;
     if (previousRect) {
       const next = nearestTo(previousRect, pool);
       if (next) applyFocus(next.id);
       return;
     }
 
-    // First focus of all: content rather than the nav bar, which is always the top-left thing
-    // on screen and would leave the hero panel blank.
+    // Genuinely the first focus of the session - there is no remembered rect yet. Content rather
+    // than the nav bar, which is always the top-left thing on screen and would leave the hero
+    // panel blank.
     const next = firstInReadingOrder(content.length > 0 ? content : pool);
     if (next) applyFocus(next.id);
   }, [registryVersion, scope, candidates, applyFocus]);
 
   const value = useMemo<FocusContextValue>(
-    () => ({ focusedId, scope, setScope, register, focus, focusFirst, move, activate }),
-    [focusedId, scope, register, focus, focusFirst, move, activate],
+    () => ({
+      focusedId,
+      scope,
+      setScope,
+      register,
+      pointerHasMoved,
+      focus,
+      focusFirst,
+      move,
+      activate,
+    }),
+    [focusedId, scope, register, pointerHasMoved, focus, focusFirst, move, activate],
   );
 
   return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
@@ -240,7 +339,7 @@ export interface FocusableResult {
  */
 export function useFocusable(options: FocusableOptions): FocusableResult {
   const { id, group, onActivate, onFocus, disabled } = options;
-  const { focusedId, register, focus } = useFocus();
+  const { focusedId, register, focus, pointerHasMoved } = useFocus();
   const elementRef = useRef<HTMLElement | null>(null);
 
   // Latest callbacks without re-registering on every render.
@@ -273,7 +372,9 @@ export function useFocusable(options: FocusableOptions): FocusableResult {
       'data-focused': focused || undefined,
       tabIndex: focused ? 0 : -1,
       onMouseEnter: () => {
-        if (!disabled) focus(id);
+        // A cursor that merely happens to be here when the window opened has not hovered
+        // anything; it has to move at least once first.
+        if (!disabled && pointerHasMoved()) focus(id);
       },
       onClick: () => {
         if (disabled) return;

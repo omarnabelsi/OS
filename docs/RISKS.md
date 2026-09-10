@@ -128,8 +128,22 @@ Scans never delete: an entry whose files have gone is logged, not removed. Match
 `(source, source_id)` means a rename keeps the id and therefore the history. Schema changes go
 through `PRAGMA user_version` migrations. Settings are exportable as JSON.
 
-Missing: an automatic backup before a migration, and a documented restore. Worth adding before
-V2 puts file operations anywhere near this.
+**Backup before migration now exists.** `Db::backup_before_migration` checkpoints the WAL and
+copies `aura.db` to `aura.db.bak-v<n>` before any upgrade, skipping brand-new and already-current
+databases. It landed with the schema v2 desktop migration - the largest the project has had.
+
+Two things the v2 migration does that any future one should copy:
+
+- **Additive only.** New tables and new columns; nothing dropped or rewritten, so `entries`,
+  `artwork` and `stats` are untouched. `folders.path` stayed `NOT NULL UNIQUE`, so virtual
+  folders use a scheme prefix (`smart:all-games`) rather than the table being rebuilt.
+- **Replayable.** `ALTER TABLE ADD COLUMN` has no `IF NOT EXISTS`, so a crash between the column
+  additions and the `user_version` bump would fail on every start afterwards - an unrecoverable
+  install from one badly timed crash. `Db::add_missing_columns` checks `PRAGMA table_info` first.
+  There is a test for exactly that half-finished state.
+
+Still missing: a documented *restore* path for the user (the backup exists, but nothing in the UI
+points at it).
 
 ## R9 - WebView2 missing or old
 
@@ -148,6 +162,91 @@ worst case ban the user's account. No amount of product value justifies getting 
 
 If it is ever built, it must be opt-in, per-game, off by default, and clearly explained. A
 non-hooking sidebar that does not touch the game's process is the sane alternative.
+
+## R11 - Spatial navigation across overlapping windows
+
+**Status: Mitigated in phase 3. Severity: high - it was the highest-risk part of the desktop
+work. Keep re-checking as each new kind of window lands.**
+
+Extends R4. `src/focus/geometry.ts` assumes a flat, non-overlapping surface: it picks what is "to
+the right" by geometry over live rects. Overlapping windows break that outright - a tile in a
+background window is geometrically to the right of one in the foreground window and must never
+receive focus.
+
+The answer is the **scope** mechanism the engine already has and overlays already use. Every
+window owns a focus group (`window:${id}`); the focused window sets the scope; directional
+movement is confined to it. Moving *between* windows is a separate, explicit action (an
+Alt+Tab equivalent, a shoulder button), plus a cycle across `desktop` -> `taskbar` -> focused
+window.
+
+As built: `WindowLayer` sets the scope from `focusedId` and clears it when no window is focused,
+so the desktop and nav bar come back into the pool. `Ctrl+Tab` / `Ctrl+Shift+Tab` / `F6` and the
+pad's shoulder triggers move between windows. Everything a window contains must register in that
+window's group - `Tile` takes a `group` prop for exactly this - because an element that registers
+in `content` from inside a window is invisible while its window is focused and reachable from
+outside it while another one is. That is the failure mode to check each time a window kind is
+added.
+
+What must not be attempted: making plain directional movement walk out of one window into
+another. It cannot be made predictable, and "press right and the thing I expected gets focus" is
+still the whole product.
+
+## R12 - Compositing cost of the desktop
+
+**Status: Watch. Severity: medium.**
+
+Several open windows, each with `backdrop-filter`, over a shader wallpaper, at 60 fps, is a real
+GPU budget. The theme already uses `backdrop-filter` on overlays and toasts, and it is one of the
+most expensive things a browser engine does.
+
+Profile before the window count grows. Be prepared to cap how many surfaces blur simultaneously
+(the focused window only, say) and degrade the rest to a flat translucent fill. A desktop that
+drops frames when the third window opens fails the 60 fps principle in section 01.
+
+Phase 3 took that cap up front rather than waiting for the profile: `backdrop-filter` is applied
+only to `.aura-window[data-focused]`, and unfocused windows get a flat translucent fill. The cost
+is therefore constant in the number of open windows. Phase 5's taskbar adds one more permanently
+blurred surface, so the steady state is two - the focused window and the taskbar - and a theme can
+take both to zero with `blur.surface: 0px`, as `aura-paper` does. Still to profile on a low-end GPU
+with a shader wallpaper running.
+
+## R13 - Scope creep into becoming a real shell
+
+**Status: Live. Severity: critical if acted on.**
+
+A convincing desktop and taskbar make "just register as the Windows shell" tempting. R3 explains
+why that stays opt-in, V2+, and behind a proven recovery path.
+
+This work is **Overlay Mode**. Explicitly out of scope: hiding the real taskbar, touching
+`Winlogon`, autostart-as-shell. Aura draws its own desktop on top of Windows; the real one keeps
+running underneath, which is what makes Alt+Tab and the exit hotkey a genuine way out.
+
+## R14 - Windows-parity expectations
+
+**Status: Live. Severity: medium - a design risk, not a technical one.**
+
+The closer this looks to Windows, the more users expect everything Windows does: right-click
+menus everywhere, drag-and-drop between folders, `Alt+Tab`, `Win`, `F2` to rename, snap layouts,
+multi-select with marquee.
+
+Half-implemented familiarity feels worse than a clearly different design, so the honoured set is
+written down rather than discovered: window drag/resize/snap and z-order, click-to-focus,
+right-click (and the gamepad menu button) for context menus, `F2` rename, and an explicit
+window-switch action. Deliberately **not** honoured in this pass: drag-and-drop between folders,
+marquee selection, and Windows' own snap-layout flyout. Those are absences by decision - say so
+in the UI rather than half-building them.
+
+## R15 - A blank desktop is worse than an opinionated one
+
+**Status: Live. Severity: medium.**
+
+"Arrange it yourself" is a promise to someone who already knows what they want and an empty room
+to everyone else. On first run the user must open the app and see their library, arranged.
+
+The seeded default (PLAN section 09) is therefore a shipping requirement, not a nice-to-have:
+one desktop, the old home rows as smart folders down the first column, a taskbar with the
+launcher, the clock and the most-played titles pinned. Implemented in
+`crates/aura-core/src/desktop/mod.rs::seed_if_empty` and covered by tests.
 
 ---
 

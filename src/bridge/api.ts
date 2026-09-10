@@ -12,13 +12,23 @@ import type {
   AppInfo,
   Artwork,
   ArtworkKind,
+  Desktop,
+  DesktopItem,
+  DesktopItemPatch,
   EntryFilter,
+  ExitHotkeyStatus,
+  Folder,
+  FolderPatch,
   LaunchSession,
   LibraryItem,
   MonitorInfo,
+  NewDesktopItem,
+  NewFolder,
   Settings,
   SettingsPatch,
   Source,
+  SystemStatus,
+  TaskbarItem,
   ThemeBundle,
   ThemeInfo,
   UpdateEntryPatch,
@@ -47,6 +57,35 @@ export interface AuraApi {
   launchEntry(id: string): Promise<LaunchSession>;
   activeSessions(): Promise<LaunchSession[]>;
 
+  // desktop - positions are grid cells, not pixels
+  listDesktops(): Promise<Desktop[]>;
+  getDesktop(id: string): Promise<Desktop | null>;
+  createDesktop(name: string): Promise<Desktop>;
+  updateDesktop(desktop: Desktop): Promise<Desktop>;
+  deleteDesktop(id: string): Promise<void>;
+  listDesktopItems(desktopId: string): Promise<DesktopItem[]>;
+  addDesktopItem(input: NewDesktopItem): Promise<DesktopItem>;
+  /** Absent fields are left alone, so a drop sends only `{ x, y }`. */
+  updateDesktopItem(id: string, patch: DesktopItemPatch): Promise<DesktopItem>;
+  removeDesktopItem(id: string): Promise<void>;
+
+  // folders
+  listFolders(): Promise<Folder[]>;
+  getFolder(id: string): Promise<Folder | null>;
+  createFolder(input: NewFolder): Promise<Folder>;
+  updateFolder(id: string, patch: FolderPatch): Promise<Folder>;
+  deleteFolder(id: string): Promise<void>;
+  /** Smart filter results, collection members, or empty for a filesystem folder (V2). */
+  folderContents(id: string): Promise<LibraryItem[]>;
+
+  // taskbar - pinned and structural only; "running" is derived in the UI
+  listTaskbarItems(): Promise<TaskbarItem[]>;
+  pinToTaskbar(targetId: string): Promise<TaskbarItem>;
+  unpinFromTaskbar(targetId: string): Promise<void>;
+  reorderTaskbar(ids: string[]): Promise<void>;
+  /** The power state behind the system area. Polled; never throws on a machine that has none. */
+  getSystemStatus(): Promise<SystemStatus>;
+
   // themes
   listThemes(): Promise<ThemeInfo[]>;
   /** Omit `id` for the active theme. */
@@ -54,6 +93,8 @@ export interface AuraApi {
   setActiveTheme(id: string): Promise<ThemeBundle>;
 
   // shell host
+  /** Whether the exit hotkey is actually claimed from the OS, not just stored in Settings. */
+  getExitHotkeyStatus(): Promise<ExitHotkeyStatus>;
   getMonitors(): Promise<MonitorInfo[]>;
   setFullscreen(fullscreen: boolean): Promise<void>;
   /** Call once after first paint; shows the (initially hidden) window. */

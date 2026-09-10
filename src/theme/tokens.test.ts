@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import realTokens from '../../themes/aura-default/tokens.json';
 import type { ThemeTokens } from '@/bridge';
-import { cssVariables, flattenTokens, kebab, tileWidthFor } from './tokens';
+import {
+  DEFAULT_TILE_FOCUS_SCALE,
+  cssVariables,
+  flattenTokens,
+  focusScaleFrom,
+  kebab,
+  tileWidthFor,
+} from './tokens';
 
 describe('kebab', () => {
   it('converts camelCase token keys', () => {
@@ -94,12 +101,33 @@ describe('tileWidthFor', () => {
   });
 });
 
+describe('focusScaleFrom', () => {
+  it('reads the real theme token rather than a hard-coded literal', () => {
+    // The whole point: Tile.tsx and the CSS that reserves room for the scaled tile must agree,
+    // so both read this. If a theme raises focusScale, the spacing follows.
+    expect(focusScaleFrom(realTokens as ThemeTokens)).toBe(1.08);
+    expect(focusScaleFrom({ tile: { focusScale: 1.2 } })).toBe(1.2);
+    expect(focusScaleFrom({ tile: { focusScale: '1.15' } })).toBe(1.15);
+  });
+
+  it('falls back rather than letting a theme break the layout', () => {
+    for (const junk of [undefined, null, {}, { tile: {} }, { tile: { focusScale: 'huge' } }]) {
+      expect(focusScaleFrom(junk as ThemeTokens)).toBe(DEFAULT_TILE_FOCUS_SCALE);
+    }
+    // Out of range in either direction: a 4x tile would cover its neighbours.
+    expect(focusScaleFrom({ tile: { focusScale: 4 } })).toBe(DEFAULT_TILE_FOCUS_SCALE);
+    expect(focusScaleFrom({ tile: { focusScale: 0.2 } })).toBe(DEFAULT_TILE_FOCUS_SCALE);
+  });
+});
+
 describe('cssVariables', () => {
   const base = { tileSize: 'medium' as const, uiScale: 1, accentColor: null };
 
-  it('applies the chosen tile size to --tile-width', () => {
+  it('applies the chosen tile size to --tile-width, scaled by the UI scale', () => {
     const vars = cssVariables(realTokens as ThemeTokens, { ...base, tileSize: 'large' });
-    expect(vars['--tile-width']).toBe('300px');
+    // Left as a calc() so it tracks --ui-scale live: text is sized in rem and follows the root
+    // font-size, so a fixed-px tile would carry a caption far too large for it at 2x.
+    expect(vars['--tile-width']).toBe('calc(300px * var(--ui-scale))');
   });
 
   it('lets the user override the accent colour', () => {

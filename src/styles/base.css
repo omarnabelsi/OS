@@ -9,6 +9,27 @@
    theme.css is injected after both by ThemeProvider. */
 @import './shell.css';
 
+/*
+ * Inter, bundled.
+ *
+ * Nothing was shipped before, so `--font-ui` resolved to whatever each machine happened to have:
+ * Segoe UI Variable on Windows 11, Segoe UI on Windows 10, something else again on a dev
+ * machine - each with different cap-height, x-height and default line metrics. That is why
+ * spacing tuned on one machine clipped on another. Bundling one file makes text render
+ * identically everywhere, which is what makes the line-heights below meaningful.
+ *
+ * Variable weight axis (100-900), so every weight the UI uses comes from this single 344 KB
+ * file. Vite fingerprints and inlines the URL at build time, and the CSP already allows
+ * `font-src 'self'`. SIL Open Font License 1.1 - see assets/fonts/LICENSE.txt.
+ */
+@font-face {
+  font-family: 'InterVariable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../assets/fonts/InterVariable.woff2') format('woff2');
+}
+
 :root {
   /* Fallback tokens = aura-default. Keep in sync with themes/aura-default/tokens.json. */
   --color-background: #07080c;
@@ -44,12 +65,41 @@
   --tile-focus-scale: 1.08;
   --tile-gap: 20px;
 
-  --font-ui: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /*
+   * 'InterVariable' is the bundled face declared above, so it always resolves and the metrics
+   * are identical on every machine. The rest is a fallback chain for the moment before the font
+   * decodes, or if a theme replaces the file.
+   *
+   * Note 'Segoe UI Variable' is deliberately absent: it is not a real family name (Windows 11
+   * installs "Segoe UI Variable Text"/"Display"/"Small"), so the old stack's first entry never
+   * matched anything on any machine.
+   *
+   * Keep this in sync with `font.ui` in themes/aura-default/tokens.json, which overrides it.
+   */
+  --font-ui: 'InterVariable', 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui,
+    -apple-system, 'Helvetica Neue', Arial, sans-serif;
   --font-display: var(--font-ui);
 
   /* Runtime, not theme: set by the UI. */
   --ui-scale: 1;
   --accent-bleed: var(--color-accent);
+}
+
+/*
+ * UI Scale lives here, on the root element, and nowhere else.
+ *
+ * It used to be on `.aura-root`, which is a <div>. `rem` always resolves against the *root*
+ * element's font-size, so nothing in shell.css - where almost every font-size is in rem -
+ * responded to it; dragging the slider changed a few em-based paddings and no text at all.
+ * ThemeProvider writes `--ui-scale` onto <html>, which is this element, so it applies directly.
+ *
+ * What deliberately does not scale: `--spacing-edge/gutter/row`, which are screen margins - at
+ * 2x they would eat a third of the display without making anything more readable. `--nav-height`
+ * is in rem and does scale, so the chrome grows with its text, and `--tile-width` is multiplied
+ * by the scale in tokens.ts so captions stay proportionate to their tiles.
+ */
+html {
+  font-size: calc(16px * var(--ui-scale));
 }
 
 html,
@@ -71,7 +121,6 @@ body,
   position: fixed;
   inset: 0;
   overflow: hidden;
-  font-size: calc(16px * var(--ui-scale));
 }
 
 .aura-boot {

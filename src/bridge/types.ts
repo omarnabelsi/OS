@@ -41,10 +41,15 @@ export function isIpcError(e: unknown): e is IpcError {
 
 export type TileSize = 'small' | 'medium' | 'large';
 
+/**
+ * A video wallpaper carries no `muted` flag on purpose: the app has no music playback, so there is
+ * nothing to unmute. `Background` hard-mutes the element. See `WallpaperSetting` in
+ * `crates/aura-core/src/config/settings.rs`.
+ */
 export type WallpaperSetting =
   | { kind: 'theme' }
   | { kind: 'image'; path: string }
-  | { kind: 'video'; path: string; muted: boolean }
+  | { kind: 'video'; path: string }
   | { kind: 'shader'; id: string }
   | { kind: 'color'; hex: string };
 
@@ -55,7 +60,6 @@ export interface Settings {
   tileSize: TileSize;
   uiScale: number;
   soundVolume: number;
-  musicVolume: number;
   soundsEnabled: boolean;
   exitHotkey: string;
   steamgriddbApiKey: string | null;
@@ -67,7 +71,18 @@ export interface Settings {
   reduceMotion: boolean;
   scanOnStartup: boolean;
   language: string;
+  taskbarVisible: boolean;
+  taskbarPosition: TaskbarPosition;
+  taskbarAlignment: TaskbarAlignment;
 }
+
+/**
+ * Which edge Aura's own taskbar is docked to. The real Windows taskbar is never moved or
+ * hidden - Aura runs as an overlay, not as the shell (docs/RISKS.md R3, R13).
+ */
+export type TaskbarPosition = 'top' | 'bottom' | 'left' | 'right';
+/** Where the buttons sit along that edge. Windows 11 centres them; Windows 10 did not. */
+export type TaskbarAlignment = 'start' | 'center';
 
 export type SettingsPatch = Partial<Settings>;
 
@@ -145,6 +160,177 @@ export interface UpdateEntryPatch {
   launch?: LaunchSpec | null;
 }
 
+// ---- desktop --------------------------------------------------------------------------------
+
+export interface GridSettings {
+  /** Cell size in logical pixels. Item positions are in cells, so this can change freely. */
+  cell: number;
+  gap: number;
+  snap: boolean;
+  autoArrange: boolean;
+}
+
+/**
+ * One named arrangement of items over the wallpaper. Plural from the start (workspaces), even
+ * though a seeded install has exactly one.
+ */
+export interface Desktop {
+  id: string;
+  name: string;
+  /** Overrides the wallpaper from settings/theme for this desktop only. */
+  wallpaper: WallpaperSetting | null;
+  grid: GridSettings;
+  sortOrder: number;
+}
+
+export type DesktopItemKind = 'shortcut' | 'folder' | 'widget' | 'separator';
+
+/**
+ * Something the user placed on a desktop.
+ *
+ * `x`/`y`/`width`/`height` are **grid cells, not pixels** - an arrangement made at 1080p has to
+ * survive plugging in a 4K monitor.
+ */
+export interface DesktopItem {
+  id: string;
+  desktopId: string;
+  kind: DesktopItemKind;
+  /** `Entry.id`, `Folder.id` or a widget id, depending on `kind`. */
+  targetId: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  labelOverride: string | null;
+  iconOverride: string | null;
+  sortOrder: number;
+}
+
+export interface NewDesktopItem {
+  desktopId: string;
+  kind?: DesktopItemKind;
+  targetId?: string | null;
+  x?: number;
+  y?: number;
+  width?: number | null;
+  height?: number | null;
+  labelOverride?: string | null;
+  iconOverride?: string | null;
+}
+
+/** Absent means "leave alone", so a drop can send only `x` and `y`. */
+export interface DesktopItemPatch {
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+  labelOverride?: string | null;
+  iconOverride?: string | null;
+  sortOrder?: number | null;
+}
+
+// ---- folders --------------------------------------------------------------------------------
+
+/**
+ * - `filesystem` - a real path on disk (the V2 file browser).
+ * - `collection` - a hand-made group of entries.
+ * - `smart` - a saved `EntryFilter`; this is what the old home rows became.
+ */
+export type FolderKind = 'filesystem' | 'collection' | 'smart';
+export type FolderLayout = 'grid' | 'list' | 'covers';
+
+/** Where a folder's window was when it last closed. Written on settle, never on a drag frame. */
+export interface FolderWindowState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximised: boolean;
+}
+
+export interface Folder {
+  id: string;
+  /**
+   * The unique locator. A filesystem path for `filesystem` folders; for virtual ones a scheme
+   * prefix instead - `smart:all-games`, `collection:<uuid>`.
+   */
+  path: string;
+  label: string | null;
+  color: string | null;
+  icon: string | null;
+  cover: string | null;
+  layout: FolderLayout;
+  /** A shape id the active theme declares in `layout.json` `folderShapes`. */
+  shape: string | null;
+  kind: FolderKind;
+  collectionId: string | null;
+  filter: EntryFilter | null;
+  windowState: FolderWindowState | null;
+  sortOrder: number;
+}
+
+export interface NewFolder {
+  path?: string | null;
+  label?: string | null;
+  kind?: FolderKind;
+  collectionId?: string | null;
+  filter?: EntryFilter | null;
+  color?: string | null;
+  icon?: string | null;
+  cover?: string | null;
+  shape?: string | null;
+  layout?: FolderLayout;
+}
+
+/**
+ * The folder editor's patch. Absent = leave it alone, `null` = clear it, a value = set it.
+ *
+ * The core keeps those three apart (`FolderPatch` in model.rs). It used to collapse the last two,
+ * so `{ color: null }` read as "unchanged" and a colour or cover, once set, could not be removed.
+ */
+export interface FolderPatch {
+  label?: string | null;
+  color?: string | null;
+  icon?: string | null;
+  cover?: string | null;
+  shape?: string | null;
+  layout?: FolderLayout | null;
+  filter?: EntryFilter | null;
+  collectionId?: string | null;
+  windowState?: FolderWindowState | null;
+  sortOrder?: number | null;
+}
+
+// ---- taskbar --------------------------------------------------------------------------------
+
+export type TaskbarItemKind = 'pinned' | 'system_area' | 'launcher';
+
+/**
+ * Only pinned and structural items are stored. Whether something is *running* is derived in the
+ * UI from open windows plus `activeSessions`, so it can never go stale.
+ */
+export interface TaskbarItem {
+  id: string;
+  kind: TaskbarItemKind;
+  targetId: string | null;
+  sortOrder: number;
+}
+
+/**
+ * What the taskbar's system area shows.
+ *
+ * Every field is optional or flagged because a desktop PC has no battery: "unknown" has to be
+ * distinguishable from "flat", or a tower renders an empty battery forever. The clock is not
+ * here - it is `new Date()` in the UI, since a round trip per second to learn the time the
+ * webview already knows would be absurd.
+ */
+export interface SystemStatus {
+  /** 0..=100, or null when there is no battery or Windows would not say. */
+  batteryPercent: number | null;
+  charging: boolean;
+  hasBattery: boolean;
+}
+
 // ---- events payloads ------------------------------------------------------------------------
 
 export type ScanStage = 'queued' | 'discovering' | 'parsing' | 'saving' | 'done' | 'error';
@@ -195,6 +381,14 @@ export interface ThemeChanged {
   themeId: string;
 }
 
+/**
+ * The desktop surface changed. Coarse on purpose: the UI reloads the arrangement rather than
+ * patching it, and these fire on user actions, never on a drag frame.
+ */
+export interface DesktopUpdated {
+  reason: string;
+}
+
 export interface HotkeyEvent {
   action: 'exit' | string;
 }
@@ -236,6 +430,19 @@ export interface GamepadEvent {
 
 // ---- shell host -----------------------------------------------------------------------------
 
+/**
+ * Whether the exit hotkey is really claimed from the OS.
+ *
+ * `accelerator` is what Settings asks for; `registered` is whether the OS agreed. They differ
+ * whenever the combination is reserved (Windows keeps `Ctrl+Shift+Escape` for Task Manager) or
+ * already taken by another application.
+ */
+export interface ExitHotkeyStatus {
+  accelerator: string;
+  registered: boolean;
+  error: string | null;
+}
+
 export interface MonitorInfo {
   name: string | null;
   x: number;
@@ -273,12 +480,30 @@ export interface ThemeTokens {
   [group: string]: Record<string, string | number> | undefined;
 }
 
+/** A folder shape a theme offers the folder editor. `asset` is relative to the theme folder. */
+export interface ThemeFolderShape {
+  id: string;
+  asset: string;
+}
+
 /** Shape of layout.json. */
 export interface ThemeLayout {
   regions?: string[];
   navBar?: { position?: 'top' | 'bottom'; items?: string[] };
+  /**
+   * The desktop surface. `grid` seeds `GridSettings` for a desktop that has none of its own;
+   * `defaultItems` is what a first run lays down, addressed by folder *locator* so a theme can
+   * refer to the seeded folders without knowing their generated ids.
+   */
+  desktop?: {
+    grid?: { cell?: number; gap?: number; snap?: boolean };
+    defaultItems?: Array<{ kind?: DesktopItemKind; folder?: string; entry?: string; x?: number; y?: number }>;
+  };
+  /** Shapes the folder editor offers. The picker enumerates these, never a hard-coded list. */
+  folderShapes?: ThemeFolderShape[];
   home?: { rows?: Array<{ id: string; title?: string; source?: string; filter?: EntryFilter }> };
-  background?: WallpaperSetting | { kind: 'video'; path: string; muted?: boolean } | { kind: 'image'; path: string } | { kind: 'shader'; id: string };
+  /** A theme may declare a wallpaper, but never audio - see `WallpaperSetting`. */
+  background?: WallpaperSetting | { kind: 'image'; path: string } | { kind: 'shader'; id: string };
   [key: string]: unknown;
 }
 
@@ -304,6 +529,7 @@ export interface CoreEventMap {
   'process://exited': ProcessExited;
   'input://gamepad': GamepadEvent;
   'theme://changed': ThemeChanged;
+  'desktop://updated': DesktopUpdated;
   'shell://toast': Toast;
   'shell://hotkey': HotkeyEvent;
 }

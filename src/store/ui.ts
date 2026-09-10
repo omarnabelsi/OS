@@ -9,7 +9,7 @@
 import { create } from 'zustand';
 
 import { onCoreEvent } from '@/bridge';
-import type { ToastLevel } from '@/bridge';
+import type { EntryType, ToastLevel } from '@/bridge';
 
 export type ScreenId = 'home' | 'games' | 'apps' | 'files' | 'media' | 'settings';
 
@@ -18,6 +18,14 @@ export interface NavItem {
   label: string;
   /** SVG name under the theme's `assets/icons/` (e.g. `home` -> `assets/icons/home.svg`). */
   icon: string;
+  /**
+   * Opens a window instead of changing screen.
+   *
+   * Settings is an *app* now, not a place: it opens in a window like a folder does, so it can
+   * sit beside whatever it is being used to change. That also makes it the reliable way back
+   * out of a broken desktop - the window layer renders it whatever state the surface is in.
+   */
+  opens?: 'window';
 }
 
 export const NAV_ITEMS: ReadonlyArray<NavItem> = [
@@ -26,8 +34,11 @@ export const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { id: 'apps', label: 'Apps', icon: 'apps' },
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'media', label: 'Media', icon: 'media' },
-  { id: 'settings', label: 'Settings', icon: 'settings' },
+  { id: 'settings', label: 'Settings', icon: 'settings', opens: 'window' },
 ];
+
+/** The nav items that are screens. Window items are skipped by the screen cycle. */
+const SCREEN_ITEMS: ReadonlyArray<NavItem> = NAV_ITEMS.filter((n) => n.opens === undefined);
 
 export type OverlayId = null | 'addEntry' | 'artwork' | 'exit' | 'itemMenu';
 
@@ -54,6 +65,16 @@ export interface UiState {
   overlay: OverlayId;
   setOverlay(o: OverlayId): void;
 
+  /**
+   * What kind of entry the "Add a program" overlay starts on. `setOverlay('addEntry')` carries
+   * no payload, so the screen that opened it says so here instead - otherwise the overlay has
+   * no way to know whether it was opened from Games or from Apps.
+   */
+  addEntryType: EntryType;
+  setAddEntryType(type: EntryType): void;
+  /** Open the add overlay pre-set to `type`. Use this instead of `setOverlay('addEntry')`. */
+  openAddEntry(type: EntryType): void;
+
   toasts: ToastItem[];
   /** `ttlMs <= 0` (or non-finite) keeps the toast until dismissed. */
   pushToast(level: ToastLevel, message: string, ttlMs?: number): void;
@@ -77,7 +98,7 @@ function clearToastTimer(id: number): void {
 }
 
 function screenIndex(s: ScreenId): number {
-  const i = NAV_ITEMS.findIndex((n) => n.id === s);
+  const i = SCREEN_ITEMS.findIndex((n) => n.id === s);
   return i < 0 ? 0 : i;
 }
 
@@ -89,13 +110,15 @@ let unbind: (() => void) | null = null;
 export const useUiStore = create<UiState>()((set, get) => ({
   screen: 'home',
   setScreen: (screen) => set({ screen }),
+  // The cycle walks screens only: stepping onto Settings with PageDown would otherwise land on a
+  // screen that the nav bar itself no longer shows as one.
   nextScreen: () => {
-    const i = (screenIndex(get().screen) + 1) % NAV_ITEMS.length;
-    set({ screen: NAV_ITEMS[i]!.id });
+    const i = (screenIndex(get().screen) + 1) % SCREEN_ITEMS.length;
+    set({ screen: SCREEN_ITEMS[i]!.id });
   },
   prevScreen: () => {
-    const i = (screenIndex(get().screen) - 1 + NAV_ITEMS.length) % NAV_ITEMS.length;
-    set({ screen: NAV_ITEMS[i]!.id });
+    const i = (screenIndex(get().screen) - 1 + SCREEN_ITEMS.length) % SCREEN_ITEMS.length;
+    set({ screen: SCREEN_ITEMS[i]!.id });
   },
 
   focusedItemId: null,
@@ -103,6 +126,10 @@ export const useUiStore = create<UiState>()((set, get) => ({
 
   overlay: null,
   setOverlay: (overlay) => set({ overlay }),
+
+  addEntryType: 'app',
+  setAddEntryType: (addEntryType) => set({ addEntryType }),
+  openAddEntry: (addEntryType) => set({ addEntryType, overlay: 'addEntry' }),
 
   toasts: [],
   pushToast: (level, message, ttlMs = TOAST_TTL_MS) => {

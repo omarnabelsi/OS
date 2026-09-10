@@ -19,6 +19,10 @@ pub enum CoreEvent {
         #[serde(rename = "themeId")]
         theme_id: String,
     },
+    /// The desktop surface changed: an item moved, a folder was edited, the taskbar was pinned.
+    /// Coarse on purpose - the UI reloads the arrangement rather than patching it, and these
+    /// fire on user actions, not on a drag frame.
+    DesktopUpdated(DesktopUpdated),
     Toast(Toast),
 }
 
@@ -33,6 +37,7 @@ impl CoreEvent {
             CoreEvent::ProcessExited(_) => "process://exited",
             CoreEvent::Gamepad(_) => "input://gamepad",
             CoreEvent::ThemeChanged { .. } => "theme://changed",
+            CoreEvent::DesktopUpdated(_) => "desktop://updated",
             CoreEvent::Toast(_) => "shell://toast",
         }
     }

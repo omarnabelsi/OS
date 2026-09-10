@@ -1,0 +1,119 @@
+/*
+ * aura-paper / theme.css
+ *
+ * A light theme, and the proof that "looks completely different" is a matter of data: this file,
+ * tokens.json, layout.json and a handful of SVGs. No component knows this theme exists.
+ *
+ * Stable hooks only (docs/THEME_FORMAT.md). Motion stays on transform / opacity and the
+ * --duration-* tokens, so reduced motion still collapses it.
+ *
+ * Most of what makes Paper different is already in tokens.json - square windows, a floating
+ * taskbar (`taskbar.inset` / `taskbar.radius`), no glass (`window.opacity: 100%`), a serif display
+ * face, 3:4 tiles. What follows is only what tokens cannot say.
+ */
+
+/*
+ * Ink shadows. The shell mixes its shadows from the background colour, which on paper is a
+ * near-white - they would simply vanish. Paper casts short, warm, ink-coloured shadows instead.
+ */
+.aura-window .aura-window-frame {
+  box-shadow:
+    0 0 0 1px rgba(29, 26, 22, 0.18),
+    0 10px 28px rgba(60, 40, 20, 0.14);
+}
+
+.aura-window[data-focused] .aura-window-frame {
+  box-shadow:
+    0 0 0 1px rgba(29, 26, 22, 0.38),
+    0 18px 44px rgba(60, 40, 20, 0.2);
+}
+
+/* A title bar is a ruled header, not a tinted strip. */
+.aura-window-title {
+  background: transparent;
+  border-bottom: 1px solid rgba(29, 26, 22, 0.14);
+}
+
+.aura-window[data-focused] .aura-window-title {
+  background: rgba(194, 65, 12, 0.05);
+}
+
+.aura-window-name {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+
+/* Headings take the display face; small caps labels get more air. */
+.aura-screen-title,
+.aura-empty h2,
+.aura-editor-preview-label {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+.aura-setting-group h3,
+.aura-editor-field h3 {
+  letter-spacing: 0.16em;
+}
+
+/* Nav bar: the active screen is underlined like a tab, and stays underlined. */
+.aura-nav {
+  background: linear-gradient(to bottom, rgba(243, 238, 228, 0.94), rgba(243, 238, 228, 0));
+}
+
+.aura-nav-item[data-active] {
+  border-radius: 0;
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+/*
+ * The taskbar is a card resting on the desk. Its float and rounding come from tokens; this adds
+ * a solid face and a hairline. `[data-position]` matches the shell's per-edge rule so this one
+ * wins by order rather than by !important.
+ */
+.aura-taskbar[data-position] {
+  background: rgba(255, 252, 246, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(29, 26, 22, 0.16),
+    0 8px 24px rgba(60, 40, 20, 0.14);
+}
+
+.aura-taskbar-button[data-active] {
+  background: rgba(194, 65, 12, 0.1);
+}
+
+/* Tiles sit on the page like printed cards: a crisp edge and an ink focus ring, no glow. */
+.aura-tile {
+  border-radius: var(--radius-tile);
+  box-shadow:
+    0 1px 0 rgba(29, 26, 22, 0.12),
+    0 6px 14px rgba(60, 40, 20, 0.12);
+}
+
+.aura-tile[data-focused] {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 3px;
+}
+
+/*
+ * No colour bleed. The default theme washes the focused game's artwork over the wallpaper; on a
+ * quiet paper desk that would be the loudest thing on screen, so Paper does not show it.
+ */
+.aura-background-bleed {
+  display: none;
+}
+
+/* Overlays dim to paper rather than to night, and toasts are cards. */
+.aura-overlay {
+  background: rgba(243, 238, 228, 0.8);
+}
+
+.aura-toast {
+  border-radius: var(--radius-md);
+  background: #fffcf6;
+  box-shadow:
+    0 0 0 1px rgba(29, 26, 22, 0.16),
+    0 10px 26px rgba(60, 40, 20, 0.16);
+}

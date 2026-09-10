@@ -26,7 +26,14 @@ export function onCoreEvent<K extends CoreEventName>(name: K, handler: Handler<K
     local.set(name, set);
   }
   set.add(handler as Handler<CoreEventName>);
-  let removeLocal: Unsubscribe = () => set?.delete(handler as Handler<CoreEventName>);
+  /*
+   * `const`, not `let`. This was previously reassigned to the combined unsubscribe below, which
+   * made that function call itself: every cleanup blew the stack, and under React's development
+   * double-invoke that happens on the very first mount - the whole shell rendered a blank page.
+   */
+  const removeLocal: Unsubscribe = () => {
+    set.delete(handler as Handler<CoreEventName>);
+  };
 
   if (!isTauri()) return removeLocal;
 
@@ -34,18 +41,19 @@ export function onCoreEvent<K extends CoreEventName>(name: K, handler: Handler<K
   let unlisten: Unsubscribe | null = null;
   void import('@tauri-apps/api/event').then(({ listen }) =>
     listen<CoreEventMap[K]>(name, (e) => handler(e.payload)).then((fn) => {
+      // Unsubscribed while the listener was still being registered: drop it on arrival.
       if (disposed) fn();
       else unlisten = fn;
     }),
   );
-  const removeTauri = () => {
+
+  // Idempotent: React can call a cleanup more than once, and `listen`'s own unlisten is not
+  // safe to run twice.
+  return () => {
+    if (disposed) return;
     disposed = true;
-    unlisten?.();
-  };
-  const removeBoth = () => {
     removeLocal();
-    removeTauri();
+    unlisten?.();
+    unlisten = null;
   };
-  removeLocal = removeBoth;
-  return removeBoth;
 }

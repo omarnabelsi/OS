@@ -7,7 +7,38 @@
 
 :root {
   --nav-height: 4.5rem;
-  --hero-height: 44vh;
+  /*
+   * The hero band. A bare `44vh` is only ~317px on a 720p window, which a two-line title plus
+   * the facts and hint lines can outgrow - the text then spills up into the nav bar and the rows
+   * below sit on top of it. The floor keeps a short viewport honest; the ceiling stops the band
+   * eating a 4K screen.
+   */
+  --hero-height: clamp(360px, 44vh, 620px);
+  /*
+   * How much room the hero's text actually needs, measured and published by <Hero> (see
+   * `useHeroContentHeight`). 0 until the first measurement, so the guess above still applies.
+   * Everything that reserves space for the hero uses max() of the two, never one alone.
+   */
+  --hero-content-height: 0px;
+
+  /*
+   * Room a focused tile needs outside its own layout box.
+   *
+   * Derived from the tokens rather than guessed, so it stays correct at every tile size, every
+   * UI scale, and for any theme that changes `tile.aspect` or `tile.focusScale`:
+   *
+   *   height  = width / aspect            (aspect is written "2 / 3", so dividing gives height)
+   *   bleed   = height * (scale - 1) / 2  (transform-origin is centre, so half grows each way)
+   *           + the focus ring the theme draws outside the artwork, which scales with it
+   *
+   * `.aura-tile-wrap` is what scales (see Tile.tsx), and it is a little taller than the artwork
+   * because of the caption; that adds well under a pixel of bleed, which the ring term absorbs.
+   */
+  --tile-height: calc(var(--tile-width) / (var(--tile-aspect)));
+  --tile-focus-ring: 6px;
+  --tile-focus-bleed: calc(
+    var(--tile-height) * (var(--tile-focus-scale) - 1) / 2 + var(--tile-focus-ring)
+  );
 }
 
 /* ---- background ------------------------------------------------------------------------- */
@@ -67,7 +98,35 @@
 
 /* ---- frame ------------------------------------------------------------------------------ */
 
+/*
+ * The frame's axis is decided by which edge the taskbar is docked to.
+ *
+ * The taskbar is the *last* child, so `column` puts it at the bottom and `row` at the right;
+ * the reversed directions move it to the top or left without reordering the DOM, which keeps
+ * reading order and tab order matching the visual order in every configuration.
+ */
 .aura-root {
+  display: flex;
+  flex-direction: column;
+}
+
+.aura-root[data-taskbar='top'] {
+  flex-direction: column-reverse;
+}
+
+.aura-root[data-taskbar='left'] {
+  flex-direction: row-reverse;
+}
+
+.aura-root[data-taskbar='right'] {
+  flex-direction: row;
+}
+
+/* Everything that is not the taskbar: nav bar above, screen and windows below. */
+.aura-frame {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -148,25 +207,49 @@
   display: none;
 }
 
-/* On home the hero occupies the upper band; the rows begin beneath it and scroll over it. */
-.aura-root[data-screen='home'] .aura-main {
-  /* Clear the hero band, plus a gutter so the first row title never crowds the hero. */
-  padding-top: calc(var(--hero-height) + var(--spacing-gutter));
+/*
+ * The desktop is a fixed surface, not a scroller: items are clamped inside the visible area, so
+ * there is nothing below the fold to scroll to. Screens that *are* lists keep `overflow-y: auto`
+ * from `.aura-main` above.
+ */
+/*
+ * `clip`, not `hidden`. A `hidden` box can still be scrolled from script, and the browser does
+ * exactly that when something inside it takes focus: a window hanging below the desktop's edge
+ * had its focused control "revealed" by scrolling the whole surface up under the nav bar. `clip`
+ * has no scroll position at all, so there is nothing to scroll.
+ */
+.aura-main[data-surface] {
+  overflow: clip;
 }
 
+.aura-main[data-surface] .aura-screen-slot {
+  height: 100%;
+}
+
+/* Lets a short screen ("coming soon", empty states) fill the viewport so its content centres. */
 .aura-screen-slot {
   min-height: 100%;
 }
 
+/*
+ * Except on home, where the hero already occupies the top of this scroller: a full-height slot
+ * underneath it would add a viewport of dead scroll space below the last row.
+ */
+.aura-root[data-screen='home'] .aura-screen-slot {
+  min-height: 0;
+}
+
 /* ---- hero ---------------------------------------------------------------------------------- */
 
+/*
+ * In normal flow at the top of `.aura-main`, so the rows below can only ever push it, never
+ * paint over it. `position: relative` is what the absolutely positioned art and body anchor to.
+ */
 .aura-hero {
-  position: absolute;
-  top: var(--nav-height);
-  left: 0;
-  right: 0;
-  height: var(--hero-height);
-  z-index: 1;
+  position: relative;
+  /* Grows to fit its own text, so a wrapped title cannot spill past the band. */
+  height: max(var(--hero-height), var(--hero-content-height));
+  margin-bottom: var(--spacing-gutter);
   pointer-events: none;
 }
 
@@ -197,7 +280,12 @@
 .aura-hero-title {
   margin: 0 0 0.35em;
   font-size: clamp(2rem, 4.4vw, 3.6rem);
-  line-height: 1.02;
+  /*
+   * 1.12, not 1.02. At 700 weight and 3.6rem there is no slack in 1.02 for a font's ascenders
+   * and descenders, so whether "Baldur's Gate" clips depends on which font the OS actually
+   * resolved - and no font files are bundled, so that varies by machine. See base.css.
+   */
+  line-height: 1.12;
   font-weight: 700;
 }
 
@@ -205,6 +293,7 @@
   margin: 0;
   color: var(--color-text-muted);
   font-size: 0.95rem;
+  line-height: 1.45;
 }
 
 .aura-hero-sep {
@@ -238,6 +327,8 @@
   margin: 0 0 0.7em;
   padding-left: var(--spacing-edge);
   font-size: 1.05rem;
+  /* Stated rather than left to `normal`, which is font-dependent and can clip descenders. */
+  line-height: 1.35;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--color-text);
@@ -249,12 +340,22 @@
   color: var(--color-text-muted);
 }
 
+/*
+ * `overflow-x: auto` forces the other axis to compute to `auto` too - the spec does not allow
+ * one axis to scroll while the other stays `visible`. So this is a vertical clip container
+ * whether we want one or not, and the padding has to clear everything a focused tile paints
+ * outside its box: the scale bleed, the focus ring, and the caption underneath.
+ */
 .aura-row-items {
   display: flex;
   gap: var(--tile-gap);
-  padding: 0.75rem var(--spacing-edge) 1.5rem;
+  padding: calc(var(--tile-focus-bleed) + 0.25rem) var(--spacing-edge)
+    calc(var(--tile-focus-bleed) + 0.5rem);
   overflow-x: auto;
   scrollbar-width: none;
+  /* Keep `scrollIntoView` honouring the same breathing room it just paid for. */
+  scroll-padding-block: calc(var(--tile-focus-bleed) + 0.25rem);
+  scroll-padding-inline: var(--spacing-edge);
 }
 
 .aura-row-items::-webkit-scrollbar {
@@ -268,16 +369,27 @@
   font-size: 0.9rem;
 }
 
+/*
+ * Same reasoning as `.aura-row-items`: the row gap must clear the scaled tile and caption of the
+ * row above, and the top padding must clear the first row's bleed.
+ */
 .aura-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--tile-width), 1fr));
-  gap: calc(var(--tile-gap) * 1.4) var(--tile-gap);
-  padding: 0.75rem var(--spacing-edge) calc(var(--spacing-row) * 1.5);
+  gap: calc(var(--tile-gap) * 1.4 + var(--tile-focus-bleed)) var(--tile-gap);
+  padding: calc(var(--tile-focus-bleed) + 0.25rem) var(--spacing-edge)
+    calc(var(--spacing-row) * 1.5 + var(--tile-focus-bleed));
 }
 
 .aura-tile-wrap {
   flex: none;
   width: var(--tile-width);
+}
+
+/* Lift the focused tile so its ring and glow are not clipped by the neighbour painted after it. */
+.aura-tile-wrap[data-focused] {
+  position: relative;
+  z-index: 2;
 }
 
 .aura-tile {
@@ -291,12 +403,13 @@
   text-align: left;
   cursor: pointer;
   /*
-   * Breathing room when the focus engine scrolls a tile into view. The block margin matters on
-   * the grid screens: without it, focusing a top-row tile scrolls the screen header - search and
-   * Add - straight off the top.
+   * Breathing room when the focus engine scrolls a tile into view. The top margin matters on the
+   * grid screens: without it, focusing a top-row tile scrolls the screen header - search and Add
+   * - straight off the top. The bottom has to clear the caption and the focus bleed, because the
+   * element being scrolled into view is this button, which does not include either.
    */
   scroll-margin-inline: var(--spacing-edge);
-  scroll-margin-block: 7rem 2rem;
+  scroll-margin-block: 7rem calc(2rem + var(--tile-focus-bleed));
 }
 
 .aura-tile-art {
@@ -315,6 +428,11 @@
   display: block;
 }
 
+/*
+ * The name of a game or app with no artwork - real user-facing text, wrapped over two or three
+ * lines, at 650 weight. 1.2 is tight enough for the descenders of a wrapped line to graze the
+ * line below, and a single long word used to be able to push out of the box.
+ */
 .aura-tile-placeholder {
   width: 100%;
   height: 100%;
@@ -324,7 +442,8 @@
   text-align: center;
   font-size: 1rem;
   font-weight: 650;
-  line-height: 1.2;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
   color: color-mix(in srgb, var(--color-text) 88%, transparent);
 }
 
@@ -351,6 +470,8 @@
   display: block;
   margin-top: 0.6em;
   font-size: 0.85rem;
+  /* `overflow: hidden` clips the line box, so the line box has to have room for descenders. */
+  line-height: 1.4;
   color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -361,6 +482,730 @@
 
 .aura-tile-wrap[data-focused] .aura-tile-label {
   opacity: 1;
+}
+
+/* ---- desktop surface -------------------------------------------------------------------------
+ *
+ * Items are absolutely positioned by cell, converted to pixels in DesktopSurface. `--desktop-cell`
+ * and `--desktop-gap` are written per surface from the desktop's own grid settings, so they are
+ * live values rather than tokens - the token defaults below are what a theme sets.
+ */
+
+.aura-desktop {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: var(--spacing-gutter) var(--spacing-edge);
+  /* Nothing here scrolls: the desktop is a fixed surface and items are clamped inside it. */
+  overflow: hidden;
+  --desktop-cell: 96px;
+  --desktop-gap: 16px;
+}
+
+.aura-desktop-cell {
+  position: absolute;
+  top: var(--spacing-gutter);
+  left: var(--spacing-edge);
+  display: grid;
+  place-items: center;
+  /* transform, not top/left: the drag stays on the compositor. */
+  will-change: transform;
+}
+
+/* Where a dragged item would land. A preview only - no state is written until the drop. */
+.aura-desktop-drop {
+  position: absolute;
+  top: var(--spacing-gutter);
+  left: var(--spacing-edge);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 55%, transparent);
+  pointer-events: none;
+}
+
+.aura-desktop-icon {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  gap: 0.4em;
+  width: 100%;
+  height: 100%;
+  padding: 0.35em;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+  /* A drag must not select the label text under the cursor. */
+  user-select: none;
+  touch-action: none;
+}
+
+.aura-desktop-icon[data-focused] {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.aura-desktop-icon[data-dragging] {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+
+.aura-desktop-icon-art {
+  display: grid;
+  place-items: center;
+  width: var(--desktop-icon-size, 56px);
+  height: var(--desktop-icon-size, 56px);
+  font-size: var(--desktop-icon-size, 56px);
+  color: var(--color-accent);
+}
+
+.aura-desktop-icon-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.aura-desktop-icon-label {
+  max-width: 100%;
+  font-size: var(--desktop-label-size, 0.8rem);
+  line-height: 1.3;
+  text-align: center;
+  /* Two lines then ellipsis: a long name must not push its neighbours around. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 6px color-mix(in srgb, var(--color-background) 85%, transparent);
+}
+
+/* ---- folder glyph ------------------------------------------------------------------------- */
+
+.aura-folder-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * The theme's SVG is used as a mask, not an <img>, so `--folder-tint` colours it. A theme can
+ * therefore ship one flat silhouette per shape instead of one file per colour.
+ */
+.aura-folder-shape {
+  position: absolute;
+  inset: 0;
+  background: var(--folder-tint, var(--color-accent));
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+/* No shape declared, or the theme's asset was rejected: a plain rounded plate still reads. */
+.aura-folder-shape[data-fallback] {
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--folder-tint, var(--color-accent)) 30%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--folder-tint, var(--color-accent)) 55%, transparent);
+}
+
+.aura-folder-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  font-size: 0.45em;
+  color: var(--color-background);
+  mix-blend-mode: normal;
+}
+
+.aura-folder-cover {
+  position: relative;
+  width: 72%;
+  height: 72%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+/* ---- windows ----------------------------------------------------------------------------------
+ *
+ * Every window is a DOM element in the one webview. The layer is the area windows are
+ * constrained to and that snapping divides up; it is measured, not assumed.
+ */
+
+.aura-window-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  /* Transparent to the pointer until a window is under it, or the desktop stops taking clicks. */
+  pointer-events: none;
+}
+
+.aura-window-layer > * {
+  pointer-events: auto;
+}
+
+/* Where a dragged window would land. A preview; nothing is applied until the drop. */
+.aura-window-snap-preview {
+  position: absolute;
+  border-radius: var(--window-radius, var(--radius-md));
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 60%, transparent);
+  pointer-events: none;
+  transition:
+    left var(--duration-fast) var(--easing-standard),
+    top var(--duration-fast) var(--easing-standard),
+    width var(--duration-fast) var(--easing-standard),
+    height var(--duration-fast) var(--easing-standard);
+}
+
+/*
+ * The window is only a geometry box: it positions, it stacks, and it does **not** clip.
+ * `.aura-window-frame` inside it carries the visible surface and the clipping, so the resize
+ * handles - siblings of the frame - are not cut away by the rounded corners.
+ */
+.aura-window {
+  position: absolute;
+}
+
+.aura-window-frame {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--window-radius, var(--radius-md));
+  /*
+   * Opaque, in two layers: the theme's surface tint over the theme's background. An unfocused
+   * window has no blur behind it (see below), so any transparency here shows the desktop icons
+   * straight through the window - which reads as a rendering fault, not as depth. The bottom
+   * layer is the opaque one; the tint above it may be as translucent as the theme likes.
+   */
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--color-surface) 55%, transparent),
+      color-mix(in srgb, var(--color-surface) 55%, transparent)
+    ),
+    var(--color-background);
+  box-shadow:
+    inset 0 0 0 1px var(--color-surface-strong),
+    0 24px 64px color-mix(in srgb, var(--color-background) 78%, transparent);
+  overflow: hidden;
+}
+
+/*
+ * Only the focused window blurs, and only it is translucent. Several backdrop-filtered surfaces
+ * over a shader wallpaper is a real GPU cost (docs/RISKS.md R12), and the blur is what makes
+ * transparency read as glass rather than as a bug - so the two travel together.
+ */
+.aura-window[data-focused] .aura-window-frame {
+  /* `window.opacity`: 100% turns the glass off, which a theme without blur needs - see above. */
+  background: color-mix(in srgb, var(--color-background) var(--window-opacity, 62%), var(--color-surface-strong));
+  backdrop-filter: blur(var(--blur-surface));
+  -webkit-backdrop-filter: blur(var(--blur-surface));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, var(--color-surface-strong)),
+    0 32px 80px color-mix(in srgb, var(--color-background) 85%, transparent);
+}
+
+.aura-window[data-mode='maximised'] .aura-window-frame {
+  border-radius: 0;
+}
+
+.aura-window-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  height: var(--window-title-bar-height, 40px);
+  padding: 0 0.4em 0 0.9em;
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  color: var(--color-text-muted);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.aura-window[data-focused] .aura-window-title {
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
+}
+
+.aura-window-name {
+  text-align: var(--window-title-align, left);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.aura-window-controls {
+  display: flex;
+  gap: 0.15em;
+}
+
+.aura-window-control {
+  display: grid;
+  place-items: center;
+  width: 2.1em;
+  height: 1.9em;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.aura-window-control:hover,
+.aura-window-control[data-focused] {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.aura-window-control[data-danger]:hover,
+.aura-window-control[data-danger][data-focused] {
+  background: var(--color-danger);
+  color: var(--color-text);
+}
+
+.aura-window-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.aura-window-body::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- folder windows -------------------------------------------------------------------------
+ *
+ * Three layouts, chosen per folder and stored on it: `grid`, `list` and `covers`. The layout is
+ * data, so the difference between them lives here rather than in three components.
+ */
+
+.aura-folder {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.aura-folder-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-gutter);
+  padding: 0.5em 0.75em;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.aura-folder-count {
+  white-space: nowrap;
+}
+
+.aura-folder-tools {
+  display: flex;
+  gap: 0.2em;
+}
+
+.aura-folder-tool {
+  display: grid;
+  place-items: center;
+  width: 2.2em;
+  height: 2.2em;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.aura-folder-tool[data-active] {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.aura-folder-tool:hover,
+.aura-folder-tool[data-focused] {
+  color: var(--color-text);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.aura-folder-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.aura-folder-body::-webkit-scrollbar {
+  display: none;
+}
+
+/* The grid inside a window sits closer than a full screen's does. */
+.aura-window-body .aura-grid,
+.aura-folder-body .aura-grid {
+  padding-inline: var(--spacing-gutter);
+}
+
+/*
+ * Grid and covers share the tile, and differ only in how much of it is shown. Covers is
+ * artwork and nothing else - bigger tiles, no caption reserved - which is what makes it worth
+ * having as a separate layout rather than a size setting.
+ */
+.aura-folder[data-layout='covers'] .aura-grid {
+  --tile-width: calc(var(--tile-width-large, 300) * 1px * var(--ui-scale));
+}
+
+.aura-folder[data-layout='covers'] .aura-tile-label {
+  display: none;
+}
+
+/* List: one dense row per item, the only layout that survives a folder of hundreds. */
+.aura-folder-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0.5em 0.5em;
+}
+
+.aura-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  width: 100%;
+  padding: 0.4em 0.6em;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aura-folder-row[data-focused] {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.aura-folder-row-art {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2em;
+  height: 2em;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.aura-folder-row-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.aura-folder-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.aura-folder-row-meta {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82em;
+}
+
+.aura-window-note,
+.aura-window-placeholder {
+  margin: 0;
+  padding: var(--spacing-gutter);
+  color: var(--color-text-muted);
+}
+
+/*
+ * Invisible grab strips, straddling the edge rather than sitting inside it - half the band is
+ * outside the visible frame, which is what Windows does and is why a window feels grabbable
+ * without the border looking thick. Corners are twice the size of the edges: they are the
+ * hardest target to hit, and they are the two-axis resize people actually reach for.
+ */
+.aura-window-resize {
+  position: absolute;
+  --grab: var(--window-resize-grab, 8px);
+  --corner: calc(var(--grab) * 2);
+  --out: calc(var(--grab) / -2);
+  touch-action: none;
+}
+
+.aura-window-resize[data-edge='n'] { top: var(--out); left: var(--corner); right: var(--corner); height: var(--grab); cursor: ns-resize; }
+.aura-window-resize[data-edge='s'] { bottom: var(--out); left: var(--corner); right: var(--corner); height: var(--grab); cursor: ns-resize; }
+.aura-window-resize[data-edge='w'] { left: var(--out); top: var(--corner); bottom: var(--corner); width: var(--grab); cursor: ew-resize; }
+.aura-window-resize[data-edge='e'] { right: var(--out); top: var(--corner); bottom: var(--corner); width: var(--grab); cursor: ew-resize; }
+.aura-window-resize[data-edge='nw'] { top: var(--out); left: var(--out); width: var(--corner); height: var(--corner); cursor: nwse-resize; }
+.aura-window-resize[data-edge='se'] { bottom: var(--out); right: var(--out); width: var(--corner); height: var(--corner); cursor: nwse-resize; }
+.aura-window-resize[data-edge='ne'] { top: var(--out); right: var(--out); width: var(--corner); height: var(--corner); cursor: nesw-resize; }
+.aura-window-resize[data-edge='sw'] { bottom: var(--out); left: var(--out); width: var(--corner); height: var(--corner); cursor: nesw-resize; }
+
+/* ---- taskbar ---------------------------------------------------------------------------------
+ *
+ * Aura's own bar, inside the shell window. The real Windows taskbar is never touched.
+ *
+ * One rule set covers all four dock edges: `data-position` flips the flex axis and which side
+ * the bar is pinned to, and everything else follows from that.
+ */
+
+/*
+ * `taskbar.inset` and `taskbar.radius` are the whole difference between a bar docked flush to
+ * the edge (both 0, the default) and a floating pill: the margin lifts it off the edge and the
+ * radius rounds it. A theme changes the taskbar's character with two numbers, no CSS.
+ */
+.aura-taskbar {
+  position: relative;
+  z-index: 4;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-gutter);
+  margin: var(--taskbar-inset, 0px);
+  border-radius: var(--taskbar-radius, 0px);
+  padding: 0.35em 0.6em;
+  background: color-mix(in srgb, var(--color-background) 78%, var(--color-surface-strong));
+  backdrop-filter: blur(var(--blur-surface));
+  -webkit-backdrop-filter: blur(var(--blur-surface));
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.aura-taskbar[data-position='top'] {
+  box-shadow: 0 1px 0 var(--color-surface-strong);
+}
+
+.aura-taskbar[data-position='bottom'] {
+  box-shadow: 0 -1px 0 var(--color-surface-strong);
+}
+
+/* Vertical docks: the bar becomes a column and the strip runs down it. */
+.aura-taskbar[data-position='left'],
+.aura-taskbar[data-position='right'] {
+  flex-direction: column;
+  width: var(--taskbar-size, 4.5rem);
+  padding: 0.6em 0.35em;
+}
+
+.aura-taskbar[data-position='left'] {
+  box-shadow: 1px 0 0 var(--color-surface-strong);
+}
+
+.aura-taskbar[data-position='right'] {
+  box-shadow: -1px 0 0 var(--color-surface-strong);
+}
+
+.aura-taskbar-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+  overflow: hidden;
+}
+
+/* Windows 11 centres the buttons; Windows 10 did not. Both are one line here. */
+.aura-taskbar[data-align='center'] .aura-taskbar-strip {
+  justify-content: center;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-strip,
+.aura-taskbar[data-position='right'] .aura-taskbar-strip {
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.aura-taskbar-button {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  max-width: 14rem;
+  min-width: 2.4em;
+  height: 2.4em;
+  padding: 0 0.6em;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--easing-standard);
+}
+
+.aura-taskbar-button:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.aura-taskbar-button[data-focused] {
+  color: var(--color-text);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+/* The focused window's button. Filled, so which window is in front is legible at a glance. */
+.aura-taskbar-button[data-active] {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.aura-taskbar-button img {
+  width: 1.35em;
+  height: 1.35em;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.aura-taskbar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A vertical bar has no room for titles - the icon and the running marker carry it. */
+.aura-taskbar[data-position='left'] .aura-taskbar-title,
+.aura-taskbar[data-position='right'] .aura-taskbar-title {
+  display: none;
+}
+
+/* The running marker: a bar along the docked edge, the way Windows draws it. */
+.aura-taskbar-button[data-running]::after {
+  content: '';
+  position: absolute;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+
+.aura-taskbar-button {
+  position: relative;
+}
+
+.aura-taskbar[data-position='bottom'] .aura-taskbar-button[data-running]::after {
+  left: 50%;
+  bottom: -0.3em;
+  width: 1em;
+  height: 2px;
+  transform: translateX(-50%);
+}
+
+.aura-taskbar[data-position='top'] .aura-taskbar-button[data-running]::after {
+  left: 50%;
+  top: -0.3em;
+  width: 1em;
+  height: 2px;
+  transform: translateX(-50%);
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-button[data-running]::after {
+  top: 50%;
+  left: -0.25em;
+  width: 2px;
+  height: 1em;
+  transform: translateY(-50%);
+}
+
+.aura-taskbar[data-position='right'] .aura-taskbar-button[data-running]::after {
+  top: 50%;
+  right: -0.25em;
+  width: 2px;
+  height: 1em;
+  transform: translateY(-50%);
+}
+
+.aura-taskbar-divider {
+  flex: none;
+  width: 1px;
+  height: 1.4em;
+  background: var(--color-surface-strong);
+  margin-inline: 0.3em;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-divider,
+.aura-taskbar[data-position='right'] .aura-taskbar-divider {
+  width: 1.4em;
+  height: 1px;
+  margin: 0.3em 0;
+}
+
+.aura-taskbar-system {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding-inline: 0.4em;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-system,
+.aura-taskbar[data-position='right'] .aura-taskbar-system {
+  flex-direction: column;
+  gap: 0.4em;
+}
+
+.aura-taskbar-battery {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+
+.aura-taskbar-battery[data-charging] {
+  color: var(--color-accent);
+}
+
+.aura-taskbar-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.aura-taskbar-clock small {
+  color: var(--color-text-muted);
+  font-size: 0.8em;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-clock,
+.aura-taskbar[data-position='right'] .aura-taskbar-clock {
+  align-items: center;
+  font-size: 0.9em;
 }
 
 /* ---- screens -------------------------------------------------------------------------------- */
@@ -421,6 +1266,7 @@
   margin: 0.4em 0 0;
   color: var(--color-text);
   font-size: 1.5rem;
+  line-height: 1.28;
 }
 
 .aura-empty p {
@@ -510,11 +1356,13 @@
 .aura-setting-label {
   color: var(--color-text);
   font-size: 0.98rem;
+  line-height: 1.35;
   font-weight: 550;
 }
 
 .aura-setting-hint {
   font-size: 0.82rem;
+  line-height: 1.4;
   color: var(--color-text-muted);
 }
 
@@ -530,7 +1378,8 @@
 .aura-setting-arrow {
   color: var(--color-accent);
   font-size: 1.1em;
-  line-height: 1;
+  /* A chevron glyph, but 1 exactly leaves nothing for a font whose glyph overshoots its em box. */
+  line-height: 1.15;
 }
 
 .aura-toggle {
@@ -562,6 +1411,307 @@
   transform: translateX(1.16em);
 }
 
+/* ---- settings app ---------------------------------------------------------------------------
+ *
+ * Two panes: categories and search on the left, rows on the right. The same component is the
+ * whole Settings screen and the body of the Settings window, so the panes are laid out with
+ * grid and collapse to one column when the container, not the viewport, is too narrow.
+ */
+
+.aura-settings-app {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  gap: var(--spacing-gutter);
+  align-items: start;
+  container-type: inline-size;
+}
+
+/* Inside a window the app fills the frame, and each pane scrolls on its own. */
+.aura-window-body .aura-settings-app {
+  height: 100%;
+  padding: 0.9em;
+  align-items: stretch;
+}
+
+.aura-window-body .aura-settings-pane {
+  overflow: auto;
+  scrollbar-width: none;
+  min-height: 0;
+  padding: 0.2em 0.4em 0.4em 0.2em;
+}
+
+.aura-window-body .aura-settings-pane::-webkit-scrollbar {
+  display: none;
+}
+
+.aura-settings-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+  min-width: 0;
+}
+
+.aura-settings-side .aura-search {
+  width: 100%;
+}
+
+.aura-settings-side .aura-input {
+  min-width: 0;
+  width: 100%;
+}
+
+.aura-settings-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+}
+
+.aura-settings-category {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  width: 100%;
+  padding: 0.6em 0.8em;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aura-settings-category[data-active] {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.aura-settings-category:hover,
+.aura-settings-category[data-focused] {
+  color: var(--color-text);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.aura-settings-pane {
+  min-width: 0;
+}
+
+.aura-settings-pane .aura-error {
+  margin-inline: 0;
+}
+
+/* A narrow window stacks the panes: categories become a scrolling strip above the rows. */
+@container (max-width: 34rem) {
+  .aura-settings-app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .aura-settings-categories {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .aura-settings-category {
+    width: auto;
+    flex: none;
+  }
+}
+
+/* ---- folder editor -------------------------------------------------------------------------- */
+
+.aura-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1em;
+  padding: 1em 1.1em 1.4em;
+}
+
+/* The live preview: the real glyph, at the size it has on the desktop. */
+.aura-editor-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5em;
+  padding: 1em;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+/* The glyph sizes itself to its box, so the preview has to give it one - a folder shape's 4:3. */
+.aura-editor-preview .aura-folder-glyph {
+  width: 5.5rem;
+  height: 4.125rem;
+  font-size: 4.125rem;
+}
+
+.aura-editor-preview-label {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.aura-editor-field h3 {
+  margin: 0 0 0.5em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.aura-editor-field > .aura-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.6em 0.8em;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.aura-editor-hint {
+  margin: 0.45em 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.aura-editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+}
+
+.aura-editor-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+.aura-choice {
+  display: grid;
+  place-items: center;
+  min-width: 2.6em;
+  height: 2.6em;
+  padding: 0.3em;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* A shape choice holds a real glyph, which needs room to read as a silhouette. */
+.aura-choice:has(.aura-folder-glyph) {
+  height: auto;
+}
+
+.aura-choice .aura-folder-glyph {
+  width: 3.2rem;
+  height: 2.4rem;
+  font-size: 1.9rem;
+}
+
+.aura-choice[data-wide] {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  height: auto;
+  padding: 0.6em 0.8em;
+  text-align: left;
+}
+
+.aura-choice[data-active] {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+}
+
+.aura-choice:hover,
+.aura-choice[data-focused] {
+  color: var(--color-text);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.aura-editor-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+}
+
+.aura-editor-option strong {
+  color: var(--color-text);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.aura-editor-option small {
+  font-size: 0.8rem;
+}
+
+.aura-swatch {
+  display: block;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+}
+
+/* "Theme colour": the accent the theme would use, marked so it reads as "no override". */
+.aura-swatch[data-default] {
+  background:
+    linear-gradient(135deg, transparent 45%, var(--color-text-muted) 45% 55%, transparent 55%),
+    var(--color-accent);
+}
+
+.aura-text-button {
+  padding: 0.55em 0.95em;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.aura-text-button:hover,
+.aura-text-button[data-focused] {
+  background: var(--color-surface-strong);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.aura-text-button[data-danger] {
+  color: var(--color-danger);
+}
+
+.aura-text-button[data-danger]:hover,
+.aura-text-button[data-danger][data-focused] {
+  background: var(--color-danger);
+  color: var(--color-text);
+}
+
+.aura-editor-danger {
+  padding-top: 0.6em;
+  border-top: 1px solid var(--color-surface-strong);
+}
+
+/*
+ * An empty state inside a window must not demand half the *viewport*: `.aura-empty` was sized
+ * for a full screen, and at 50vh a small folder window would scroll to reach its own message.
+ */
+.aura-window-body .aura-empty {
+  min-height: 0;
+  height: 100%;
+  padding: var(--spacing-gutter);
+}
+
+.aura-window-body .aura-empty h2 {
+  font-size: 1.15rem;
+}
+
 /* ---- overlays ---------------------------------------------------------------------------------- */
 
 .aura-overlay {
@@ -588,6 +1738,7 @@
 .aura-panel-title {
   margin: 0 0 0.5em;
   font-size: 1.3rem;
+  line-height: 1.3;
   font-weight: 650;
 }
 
@@ -630,6 +1781,16 @@
 .aura-panel-list .aura-panel-button {
   justify-content: flex-start;
   width: 100%;
+}
+
+/*
+ * The chosen option in a set (the Add overlay's Games/Apps picker). Declared before
+ * [data-focused] so focus still wins the background: "selected" is what will be saved,
+ * "focused" is where the D-pad is, and the two are independent.
+ */
+.aura-panel-button[data-selected] {
+  background: var(--color-surface-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
 }
 
 .aura-panel-button[data-focused] {
@@ -675,6 +1836,13 @@
   min-width: 0;
 }
 
+/* A small set of mutually exclusive buttons inside a field (Games / Apps). */
+.aura-field-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6em;
+}
+
 /* ---- launch curtain ------------------------------------------------------------------------------ */
 
 .aura-launch {
@@ -695,6 +1863,7 @@
   margin: 0.3em 0 0;
   color: var(--color-text);
   font-size: 1.6rem;
+  line-height: 1.28;
 }
 
 .aura-launch-body p {
@@ -744,6 +1913,14 @@ kbd {
   background: var(--color-surface-strong);
   font-family: inherit;
   font-size: 0.85em;
+  line-height: 1.4;
+}
+
+/* A hotkey the OS refused. Shown struck through so it never reads as a working shortcut. */
+kbd[data-error] {
+  background: color-mix(in srgb, var(--color-danger) 24%, transparent);
+  color: var(--color-text);
+  text-decoration: line-through;
 }
 
 /* The setting mirrors the OS-level preference in base.css. */
@@ -763,7 +1940,8 @@ kbd {
 @media (max-width: 1100px) {
   :root {
     --spacing-edge: 32px;
-    --hero-height: 38vh;
+    /* Same shape as the default: a smaller share of the viewport, still with a hard floor. */
+    --hero-height: clamp(320px, 38vh, 520px);
   }
 }
 
