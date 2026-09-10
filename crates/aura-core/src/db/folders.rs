@@ -1,4 +1,4 @@
-﻿//! `folders` repository.
+//! `folders` repository.
 //!
 //! The table shipped in schema v1 marked "V2 - pinned locations for the file browser"; v2 added
 //! the columns the desktop needs (`shape`, `kind`, `collection_id`, `filter`, `window_state`)
@@ -46,7 +46,10 @@ fn row_to_folder(row: &Row<'_>) -> rusqlite::Result<Folder> {
         cover: row.get(5)?,
         layout: parse_layout(layout),
         shape: row.get(7)?,
-        kind: kind.as_deref().and_then(FolderKind::parse).unwrap_or_default(),
+        kind: kind
+            .as_deref()
+            .and_then(FolderKind::parse)
+            .unwrap_or_default(),
         collection_id: row.get(9)?,
         // Unreadable JSON degrades to "no filter" rather than refusing to list the folder.
         filter: filter.and_then(|f| serde_json::from_str(&f).ok()),
@@ -70,13 +73,17 @@ pub fn list(db: &Db) -> Result<Vec<Folder>> {
 pub fn get(db: &Db, id: &str) -> Result<Option<Folder>> {
     let conn = db.conn();
     let sql = format!("SELECT {COLS} FROM folders WHERE id = ?1");
-    Ok(conn.query_row(&sql, params![id], row_to_folder).optional()?)
+    Ok(conn
+        .query_row(&sql, params![id], row_to_folder)
+        .optional()?)
 }
 
 pub fn find_by_path(db: &Db, path: &str) -> Result<Option<Folder>> {
     let conn = db.conn();
     let sql = format!("SELECT {COLS} FROM folders WHERE path = ?1");
-    Ok(conn.query_row(&sql, params![path], row_to_folder).optional()?)
+    Ok(conn
+        .query_row(&sql, params![path], row_to_folder)
+        .optional()?)
 }
 
 /// The locator a folder of this kind should occupy, given what the caller supplied.
@@ -196,8 +203,7 @@ pub fn put(db: &Db, folder: &Folder) -> Result<()> {
 
 /// Apply the folder editor's patch. An absent field is left alone; an explicit `null` clears it.
 pub fn patch(db: &Db, id: &str, patch: &FolderPatch) -> Result<Folder> {
-    let mut folder =
-        get(db, id)?.ok_or_else(|| CoreError::NotFound(format!("folder `{id}`")))?;
+    let mut folder = get(db, id)?.ok_or_else(|| CoreError::NotFound(format!("folder `{id}`")))?;
 
     // Outer `None` = absent, leave it; `Some(None)` = null, clear it; `Some(Some(v))` = set it.
     if let Some(label) = &patch.label {
@@ -292,18 +298,30 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(created.path, "smart:all-games", "readable locator, not a uuid");
+        assert_eq!(
+            created.path, "smart:all-games",
+            "readable locator, not a uuid"
+        );
         let back = get(&db, &created.id).unwrap().unwrap();
         assert_eq!(back, created);
         assert!(smart_filter(&back).is_some());
-        assert_eq!(back.filter.as_ref().unwrap().entry_type, Some(EntryType::Game));
+        assert_eq!(
+            back.filter.as_ref().unwrap().entry_type,
+            Some(EntryType::Game)
+        );
     }
 
     #[test]
     fn a_filesystem_folder_needs_a_path_and_a_collection_folder_does_not() {
         let db = db();
         assert!(matches!(
-            create(&db, &NewFolder { kind: Some(FolderKind::Filesystem), ..Default::default() }),
+            create(
+                &db,
+                &NewFolder {
+                    kind: Some(FolderKind::Filesystem),
+                    ..Default::default()
+                }
+            ),
             Err(CoreError::Invalid(_))
         ));
 
@@ -361,22 +379,51 @@ mod tests {
         assert_eq!(edited.color.as_deref(), Some("#3ddc84"));
         assert_eq!(edited.shape.as_deref(), Some("tab"));
         assert_eq!(edited.layout, FolderLayout::Covers);
-        assert_eq!(edited.label.as_deref(), Some("Games"), "untouched by this patch");
-        assert_eq!(edited.path, folder.path, "the locator never moves under an edit");
+        assert_eq!(
+            edited.label.as_deref(),
+            Some("Games"),
+            "untouched by this patch"
+        );
+        assert_eq!(
+            edited.path, folder.path,
+            "the locator never moves under an edit"
+        );
     }
 
     #[test]
     fn window_geometry_is_remembered_per_folder() {
         let db = db();
-        let folder =
-            create(&db, &NewFolder { label: Some("Games".into()), kind: Some(FolderKind::Smart), ..Default::default() })
-                .unwrap();
+        let folder = create(
+            &db,
+            &NewFolder {
+                label: Some("Games".into()),
+                kind: Some(FolderKind::Smart),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(folder.window_state, None);
 
-        let state = FolderWindowState { x: 120.0, y: 80.0, width: 900.0, height: 600.0, maximised: false };
-        patch(&db, &folder.id, &FolderPatch { window_state: Some(Some(state)), ..Default::default() })
-            .unwrap();
-        assert_eq!(get(&db, &folder.id).unwrap().unwrap().window_state, Some(state));
+        let state = FolderWindowState {
+            x: 120.0,
+            y: 80.0,
+            width: 900.0,
+            height: 600.0,
+            maximised: false,
+        };
+        patch(
+            &db,
+            &folder.id,
+            &FolderPatch {
+                window_state: Some(Some(state)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            get(&db, &folder.id).unwrap().unwrap().window_state,
+            Some(state)
+        );
     }
 
     #[test]
@@ -385,18 +432,29 @@ mod tests {
         // so a colour or a cover could never be removed once set. Parse real JSON here, because
         // the IPC boundary is exactly where the two cases used to collapse.
         let db = db();
-        let folder =
-            create(&db, &NewFolder { label: Some("Games".into()), kind: Some(FolderKind::Smart), ..Default::default() })
-                .unwrap();
+        let folder = create(
+            &db,
+            &NewFolder {
+                label: Some("Games".into()),
+                kind: Some(FolderKind::Smart),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let set: FolderPatch =
-            serde_json::from_str(r##"{ "color": "#3ddc84", "cover": "C:/covers/games.png" }"##).unwrap();
+            serde_json::from_str(r##"{ "color": "#3ddc84", "cover": "C:/covers/games.png" }"##)
+                .unwrap();
         patch(&db, &folder.id, &set).unwrap();
 
         let clear: FolderPatch = serde_json::from_str(r#"{ "color": null }"#).unwrap();
         let cleared = patch(&db, &folder.id, &clear).unwrap();
 
         assert_eq!(cleared.color, None, "an explicit null clears");
-        assert_eq!(cleared.cover.as_deref(), Some("C:/covers/games.png"), "an absent key leaves alone");
+        assert_eq!(
+            cleared.cover.as_deref(),
+            Some("C:/covers/games.png"),
+            "an absent key leaves alone"
+        );
         assert_eq!(cleared.label.as_deref(), Some("Games"));
         // Stored, not just returned.
         assert_eq!(get(&db, &folder.id).unwrap().unwrap().color, None);
@@ -415,8 +473,15 @@ mod tests {
     #[test]
     fn deleting_reports_whether_anything_went() {
         let db = db();
-        let f = create(&db, &NewFolder { kind: Some(FolderKind::Smart), label: Some("X".into()), ..Default::default() })
-            .unwrap();
+        let f = create(
+            &db,
+            &NewFolder {
+                kind: Some(FolderKind::Smart),
+                label: Some("X".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(count(&db).unwrap(), 1);
         assert!(delete(&db, &f.id).unwrap());
         assert!(!delete(&db, &f.id).unwrap());

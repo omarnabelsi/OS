@@ -72,7 +72,10 @@ impl Core {
         let mut settings = db::settings::load(&db)?.unwrap_or_default();
         // One-time repair for installs carrying the old, unregistrable exit hotkey.
         if config::settings::repair_exit_hotkey(&mut settings) {
-            tracing::warn!("stored exit hotkey was OS-reserved; reset to {}", settings.exit_hotkey);
+            tracing::warn!(
+                "stored exit hotkey was OS-reserved; reset to {}",
+                settings.exit_hotkey
+            );
             db::settings::save(&db, &settings)?;
         }
         let http = reqwest::blocking::Client::builder()
@@ -296,7 +299,9 @@ impl Core {
     pub fn set_active_theme(&self, id: &str) -> Result<ThemeBundle> {
         let bundle = self.themes.load(id)?;
         self.update_settings(serde_json::json!({ "themeId": id }))?;
-        self.sink.emit(CoreEvent::ThemeChanged { theme_id: id.to_string() });
+        self.sink.emit(CoreEvent::ThemeChanged {
+            theme_id: id.to_string(),
+        });
         Ok(bundle)
     }
 
@@ -308,7 +313,8 @@ impl Core {
     }
 
     pub fn stop_input(&self) {
-        self.input_stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.input_stop
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 

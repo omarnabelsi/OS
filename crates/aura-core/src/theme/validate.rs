@@ -23,15 +23,21 @@ fn check_asset(dir: &Path, rel: &str, what: &str) -> Result<()> {
         return Err(theme_err(format!("{what} path is empty")));
     }
     if path.is_absolute() {
-        return Err(theme_err(format!("{what} `{rel}` must be relative to the theme folder")));
+        return Err(theme_err(format!(
+            "{what} `{rel}` must be relative to the theme folder"
+        )));
     }
     for component in path.components() {
         match component {
             Component::ParentDir => {
-                return Err(theme_err(format!("{what} `{rel}` escapes the theme folder")))
+                return Err(theme_err(format!(
+                    "{what} `{rel}` escapes the theme folder"
+                )))
             }
             Component::Prefix(_) | Component::RootDir => {
-                return Err(theme_err(format!("{what} `{rel}` must be relative to the theme folder")))
+                return Err(theme_err(format!(
+                    "{what} `{rel}` must be relative to the theme folder"
+                )))
             }
             _ => {}
         }
@@ -52,7 +58,10 @@ fn check_asset(dir: &Path, rel: &str, what: &str) -> Result<()> {
 /// and one broken shape should not cost the user their whole desktop. Returns notes to log.
 pub fn sanitise_folder_shapes(dir: &Path, layout: &mut serde_json::Value) -> Vec<String> {
     let mut notes = Vec::new();
-    let Some(shapes) = layout.get_mut("folderShapes").and_then(|s| s.as_array_mut()) else {
+    let Some(shapes) = layout
+        .get_mut("folderShapes")
+        .and_then(|s| s.as_array_mut())
+    else {
         return notes;
     };
 
@@ -64,7 +73,9 @@ pub fn sanitise_folder_shapes(dir: &Path, layout: &mut serde_json::Value) -> Vec
             return false;
         }
         if !is_kebab_case(id) {
-            notes.push(format!("folder shape id `{id}` must be kebab-case; ignored"));
+            notes.push(format!(
+                "folder shape id `{id}` must be kebab-case; ignored"
+            ));
             return false;
         }
         if let Err(e) = check_asset(dir, asset, &format!("folder shape `{id}`")) {
@@ -104,7 +115,12 @@ pub fn manifest(dir: &Path, m: &ThemeManifest, app_version: &str) -> Result<()> 
         .map_err(|e| theme_err(format!("version `{}` is not semver: {e}", m.version)))?;
     let _ = version;
 
-    if let Some(min) = m.min_app_version.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(min) = m
+        .min_app_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         let min = semver::Version::parse(min)
             .map_err(|e| theme_err(format!("minAppVersion `{min}` is not semver: {e}")))?;
         let current = semver::Version::parse(app_version.trim())
@@ -137,7 +153,9 @@ pub fn tokens(tokens: &serde_json::Value) -> Vec<String> {
     let mut out = Vec::new();
     for key in ["accent", "background"] {
         if tokens.get("color").and_then(|c| c.get(key)).is_none() {
-            out.push(format!("tokens.json has no `color.{key}`; the built-in fallback is used"));
+            out.push(format!(
+                "tokens.json has no `color.{key}`; the built-in fallback is used"
+            ));
         }
     }
 
@@ -176,7 +194,9 @@ pub fn warnings(m: &ThemeManifest, token_values: &serde_json::Value) -> Vec<Stri
     let mut out = tokens(token_values);
     for slot in SOUND_SLOTS {
         if !m.sounds.contains_key(slot) {
-            out.push(format!("no `{slot}` sound; the default theme's sound is used"));
+            out.push(format!(
+                "no `{slot}` sound; the default theme's sound is used"
+            ));
         }
     }
     out
@@ -184,7 +204,8 @@ pub fn warnings(m: &ThemeManifest, token_values: &serde_json::Value) -> Vec<Stri
 
 pub fn is_kebab_case(s: &str) -> bool {
     !s.is_empty()
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         && !s.starts_with('-')
         && !s.ends_with('-')
         && !s.contains("--")
@@ -242,8 +263,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = theme_dir(tmp.path(), "my-theme");
 
-        assert!(manifest(&dir, &base_manifest("My_Theme"), "0.1.0").is_err(), "not kebab-case");
-        assert!(manifest(&dir, &base_manifest("other-theme"), "0.1.0").is_err(), "folder mismatch");
+        assert!(
+            manifest(&dir, &base_manifest("My_Theme"), "0.1.0").is_err(),
+            "not kebab-case"
+        );
+        assert!(
+            manifest(&dir, &base_manifest("other-theme"), "0.1.0").is_err(),
+            "folder mismatch"
+        );
 
         let mut m = base_manifest("my-theme");
         m.name = "  ".into();
@@ -265,14 +292,23 @@ mod tests {
 
         let mut m = base_manifest("my-theme");
         m.min_app_version = Some("0.9.0".into());
-        assert!(manifest(&dir, &m, "0.1.0").is_err(), "theme is newer than the app");
-        assert!(manifest(&dir, &m, "1.0.0").is_ok(), "app is newer than the theme");
+        assert!(
+            manifest(&dir, &m, "0.1.0").is_err(),
+            "theme is newer than the app"
+        );
+        assert!(
+            manifest(&dir, &m, "1.0.0").is_ok(),
+            "app is newer than the theme"
+        );
 
         m.min_app_version = Some("0.1.0".into());
         assert!(manifest(&dir, &m, "0.1.0").is_ok(), "exact match is fine");
 
         m.min_app_version = Some(String::new());
-        assert!(manifest(&dir, &m, "0.1.0").is_ok(), "blank is treated as unset");
+        assert!(
+            manifest(&dir, &m, "0.1.0").is_ok(),
+            "blank is treated as unset"
+        );
     }
 
     #[test]
@@ -291,7 +327,9 @@ mod tests {
         // Path traversal must be refused even when the target exists.
         std::fs::write(tmp.path().join("outside.wav"), b"RIFF").unwrap();
         let mut escaping = base_manifest("my-theme");
-        escaping.sounds.insert("move".into(), "../outside.wav".into());
+        escaping
+            .sounds
+            .insert("move".into(), "../outside.wav".into());
         let err = manifest(&dir, &escaping, "0.1.0").unwrap_err();
         assert!(err.to_string().contains("escapes"), "got {err}");
 
@@ -321,7 +359,10 @@ mod tests {
         assert!(notes.iter().any(|w| w.contains("color.accent")));
         assert!(notes.iter().any(|w| w.contains("color.background")));
         for slot in SOUND_SLOTS {
-            assert!(notes.iter().any(|w| w.contains(slot)), "no warning for `{slot}`");
+            assert!(
+                notes.iter().any(|w| w.contains(slot)),
+                "no warning for `{slot}`"
+            );
         }
 
         let complete = serde_json::json!({ "color": { "accent": "#fff", "background": "#000" } });
@@ -340,8 +381,12 @@ mod tests {
         };
 
         // The shell's default opacity is translucent, so leaving it out is the same mistake.
-        assert!(glass_without_blur(None).iter().any(|w| w.contains("window.opacity")));
-        assert!(glass_without_blur(Some("62%")).iter().any(|w| w.contains("window.opacity")));
+        assert!(glass_without_blur(None)
+            .iter()
+            .any(|w| w.contains("window.opacity")));
+        assert!(glass_without_blur(Some("62%"))
+            .iter()
+            .any(|w| w.contains("window.opacity")));
         // Opaque is the fix, and must not be flagged.
         assert!(glass_without_blur(Some("100%")).is_empty());
 
@@ -359,7 +404,10 @@ mod tests {
         assert_eq!(token_number(Some(&serde_json::json!(0))), Some(0.0));
         assert_eq!(token_number(Some(&serde_json::json!("0px"))), Some(0.0));
         assert_eq!(token_number(Some(&serde_json::json!("62%"))), Some(62.0));
-        assert_eq!(token_number(Some(&serde_json::json!(" 1.5rem "))), Some(1.5));
+        assert_eq!(
+            token_number(Some(&serde_json::json!(" 1.5rem "))),
+            Some(1.5)
+        );
         assert_eq!(token_number(Some(&serde_json::json!("auto"))), None);
         assert_eq!(token_number(None), None);
     }

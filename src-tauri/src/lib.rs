@@ -33,7 +33,11 @@ pub fn run() {
         }))
         .plugin(
             tauri_plugin_log::Builder::new()
-                .level(if cfg!(debug_assertions) { log::LevelFilter::Debug } else { log::LevelFilter::Info })
+                .level(if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Info
+                })
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
@@ -56,7 +60,11 @@ pub fn run() {
             }
 
             let version = app.package_info().version.to_string();
-            app.manage(AppState { core: core.clone(), args: setup_args.clone(), version });
+            app.manage(AppState {
+                core: core.clone(),
+                args: setup_args.clone(),
+                version,
+            });
 
             shell_host::window::configure_main_window(&handle, &settings, &setup_args)?;
             shell_host::window::install_launch_hooks(&handle, settings.hide_shell_on_launch);

@@ -28,7 +28,10 @@ pub struct SgdbImage {
 
 impl SgdbImage {
     fn is_animated(&self) -> bool {
-        self.mime.as_deref().map(|m| m.eq_ignore_ascii_case("image/gif")).unwrap_or(false)
+        self.mime
+            .as_deref()
+            .map(|m| m.eq_ignore_ascii_case("image/gif"))
+            .unwrap_or(false)
             || self.url.to_ascii_lowercase().ends_with(".gif")
     }
 }
@@ -80,7 +83,10 @@ impl<'a> SgdbClient<'a> {
         let resp = self
             .http
             .get(&url)
-            .header(reqwest::header::AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", self.api_key),
+            )
             .send()?;
 
         let status = resp.status();
@@ -92,7 +98,9 @@ impl<'a> SgdbClient<'a> {
             return Err(CoreError::Http("SteamGridDB rejected the API key".into()));
         }
         if !status.is_success() {
-            return Err(CoreError::Http(format!("SteamGridDB {path} returned {status}")));
+            return Err(CoreError::Http(format!(
+                "SteamGridDB {path} returned {status}"
+            )));
         }
 
         let parsed: SgdbResponse<T> = resp.json()?;

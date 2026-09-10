@@ -14,7 +14,12 @@ pub enum WallpaperKind {
 }
 
 pub fn probe(path: &Path) -> WallpaperKind {
-    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("png" | "jpg" | "jpeg" | "webp" | "gif" | "avif" | "bmp") => WallpaperKind::Image,
         Some("mp4" | "webm" | "mkv" | "mov" | "m4v") => WallpaperKind::Video,
         Some("frag" | "glsl") => WallpaperKind::Shader,

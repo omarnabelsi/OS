@@ -34,7 +34,10 @@ pub fn get(db: &Db, entry_id: &str) -> Result<Stats> {
 pub fn record_launch(db: &Db, entry_id: &str, now: i64) -> Result<Stats> {
     {
         let conn = db.conn();
-        conn.execute("INSERT OR IGNORE INTO stats (entry_id) VALUES (?1)", params![entry_id])?;
+        conn.execute(
+            "INSERT OR IGNORE INTO stats (entry_id) VALUES (?1)",
+            params![entry_id],
+        )?;
         conn.execute(
             "UPDATE stats SET launch_count = launch_count + 1, last_played = ?2 WHERE entry_id = ?1",
             params![entry_id, now],
@@ -46,7 +49,10 @@ pub fn record_launch(db: &Db, entry_id: &str, now: i64) -> Result<Stats> {
 pub fn add_playtime(db: &Db, entry_id: &str, secs: u64) -> Result<Stats> {
     {
         let conn = db.conn();
-        conn.execute("INSERT OR IGNORE INTO stats (entry_id) VALUES (?1)", params![entry_id])?;
+        conn.execute(
+            "INSERT OR IGNORE INTO stats (entry_id) VALUES (?1)",
+            params![entry_id],
+        )?;
         conn.execute(
             "UPDATE stats SET playtime_secs = playtime_secs + ?2 WHERE entry_id = ?1",
             params![entry_id, secs as i64],
@@ -64,7 +70,10 @@ pub fn set_flags(
 ) -> Result<Stats> {
     {
         let conn = db.conn();
-        conn.execute("INSERT OR IGNORE INTO stats (entry_id) VALUES (?1)", params![entry_id])?;
+        conn.execute(
+            "INSERT OR IGNORE INTO stats (entry_id) VALUES (?1)",
+            params![entry_id],
+        )?;
         conn.execute(
             "UPDATE stats SET
                favourite = COALESCE(?2, favourite),
@@ -90,7 +99,11 @@ mod tests {
             entry_type: EntryType::Game,
             source: Source::Manual,
             source_id: None,
-            launch: LaunchSpec::Exe { path: "a.exe".into(), args: vec![], cwd: None },
+            launch: LaunchSpec::Exe {
+                path: "a.exe".into(),
+                args: vec![],
+                cwd: None,
+            },
             install_path: None,
             install_size: None,
             created_at: 1,

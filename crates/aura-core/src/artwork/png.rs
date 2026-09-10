@@ -24,7 +24,9 @@ const MAX_DIMENSION: u32 = 8192;
 /// `width * height * 4` bytes.
 pub fn encode_rgba(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>> {
     if width == 0 || height == 0 {
-        return Err(CoreError::Invalid("a PNG needs a non-zero width and height".into()));
+        return Err(CoreError::Invalid(
+            "a PNG needs a non-zero width and height".into(),
+        ));
     }
     if width > MAX_DIMENSION || height > MAX_DIMENSION {
         return Err(CoreError::Invalid(format!(
@@ -104,7 +106,11 @@ fn crc32(bytes: &[u8]) -> u32 {
     for &byte in bytes {
         crc ^= byte as u32;
         for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0xedb8_8320
+            } else {
+                crc >> 1
+            };
         }
     }
     !crc
@@ -136,7 +142,11 @@ mod tests {
             let kind = String::from_utf8(png[i + 4..i + 8].to_vec()).unwrap();
             let data = png[i + 8..i + 8 + len].to_vec();
             let crc = u32::from_be_bytes(png[i + 8 + len..i + 12 + len].try_into().unwrap());
-            assert_eq!(crc, crc32(&png[i + 4..i + 8 + len]), "CRC of the {kind} chunk");
+            assert_eq!(
+                crc,
+                crc32(&png[i + 4..i + 8 + len]),
+                "CRC of the {kind} chunk"
+            );
             out.push((kind, data));
             i += 12 + len;
         }
@@ -160,12 +170,20 @@ mod tests {
 
         let chunks = parse_chunks(&png);
         let kinds: Vec<&str> = chunks.iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(kinds, vec!["IHDR", "IDAT", "IEND"], "exactly the chunks we write, in order");
+        assert_eq!(
+            kinds,
+            vec!["IHDR", "IDAT", "IEND"],
+            "exactly the chunks we write, in order"
+        );
 
         let ihdr = &chunks[0].1;
         assert_eq!(u32::from_be_bytes(ihdr[0..4].try_into().unwrap()), 2);
         assert_eq!(u32::from_be_bytes(ihdr[4..8].try_into().unwrap()), 3);
-        assert_eq!(&ihdr[8..], &[8, 6, 0, 0, 0], "8-bit RGBA, deflate, no interlace");
+        assert_eq!(
+            &ihdr[8..],
+            &[8, 6, 0, 0, 0],
+            "8-bit RGBA, deflate, no interlace"
+        );
         assert!(chunks[2].1.is_empty(), "IEND carries no data");
     }
 
@@ -190,7 +208,11 @@ mod tests {
         assert_eq!(nlen, !len, "NLEN is LEN's one's complement");
 
         let expected_raw = [0u8, 1, 2, 3, 4, 0, 5, 6, 7, 8];
-        assert_eq!(&idat[7..7 + 10], &expected_raw, "rows are filter byte + verbatim pixels");
+        assert_eq!(
+            &idat[7..7 + 10],
+            &expected_raw,
+            "rows are filter byte + verbatim pixels"
+        );
         assert_eq!(
             &idat[17..],
             &adler32(&expected_raw).to_be_bytes(),
@@ -206,11 +228,17 @@ mod tests {
         let idat = &parse_chunks(&png)[1].1;
 
         let raw_len = (w as usize * 4 + 1) * h as usize;
-        assert!(raw_len > MAX_STORED_BLOCK, "the fixture must actually need two blocks");
+        assert!(
+            raw_len > MAX_STORED_BLOCK,
+            "the fixture must actually need two blocks"
+        );
 
         // First block header: not final.
         assert_eq!(idat[2], 0x00);
-        assert_eq!(u16::from_le_bytes([idat[3], idat[4]]), MAX_STORED_BLOCK as u16);
+        assert_eq!(
+            u16::from_le_bytes([idat[3], idat[4]]),
+            MAX_STORED_BLOCK as u16
+        );
 
         // Second block header sits right after the first block's payload, and is the last.
         let second = 2 + 5 + MAX_STORED_BLOCK;
@@ -225,8 +253,17 @@ mod tests {
     fn rejects_mismatched_and_absurd_input() {
         assert!(matches!(encode_rgba(0, 1, &[]), Err(CoreError::Invalid(_))));
         assert!(matches!(encode_rgba(1, 0, &[]), Err(CoreError::Invalid(_))));
-        assert!(matches!(encode_rgba(1, 1, &[0, 0, 0]), Err(CoreError::Invalid(_))));
-        assert!(matches!(encode_rgba(1, 1, &[0; 8]), Err(CoreError::Invalid(_))));
-        assert!(matches!(encode_rgba(99_999, 1, &[]), Err(CoreError::Invalid(_))));
+        assert!(matches!(
+            encode_rgba(1, 1, &[0, 0, 0]),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            encode_rgba(1, 1, &[0; 8]),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            encode_rgba(99_999, 1, &[]),
+            Err(CoreError::Invalid(_))
+        ));
     }
 }

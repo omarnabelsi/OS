@@ -29,8 +29,14 @@ pub const GRID_HEIGHT: u32 = 450;
 
 // Guaranteed at compile time rather than by a test, since both are constants: a careless edit
 // to either cannot get as far as a test run.
-const _: () = assert!(GRID_WIDTH * 3 == GRID_HEIGHT * 2, "the grid canvas must stay 2:3");
-const _: () = assert!(GRID_WIDTH >= ICON_SIZE, "an icon must fit the canvas without cropping");
+const _: () = assert!(
+    GRID_WIDTH * 3 == GRID_HEIGHT * 2,
+    "the grid canvas must stay 2:3"
+);
+const _: () = assert!(
+    GRID_WIDTH >= ICON_SIZE,
+    "an icon must fit the canvas without cropping"
+);
 
 /// An extracted icon: top-down, non-premultiplied RGBA8, `width * height * 4` bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,7 +75,8 @@ pub fn center_on_canvas(icon: &IconBitmap, width: u32, height: u32) -> Vec<u8> {
 
 /// True for paths Windows resolves through the shell link API rather than reading directly.
 pub fn is_shortcut(path: &Path) -> bool {
-    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
 }
 
 /// The file an icon should be read from: a `.lnk` points at its target, anything else is itself.
@@ -164,14 +171,26 @@ mod win {
     }
 
     /// `CLSID_ShellLink` - {00021401-0000-0000-C000-000000000046}
-    const CLSID_SHELL_LINK: Guid =
-        Guid { data1: 0x0002_1401, data2: 0, data3: 0, data4: [0xC0, 0, 0, 0, 0, 0, 0, 0x46] };
+    const CLSID_SHELL_LINK: Guid = Guid {
+        data1: 0x0002_1401,
+        data2: 0,
+        data3: 0,
+        data4: [0xC0, 0, 0, 0, 0, 0, 0, 0x46],
+    };
     /// `IID_IShellLinkW` - {000214F9-0000-0000-C000-000000000046}
-    const IID_ISHELL_LINK_W: Guid =
-        Guid { data1: 0x0002_14F9, data2: 0, data3: 0, data4: [0xC0, 0, 0, 0, 0, 0, 0, 0x46] };
+    const IID_ISHELL_LINK_W: Guid = Guid {
+        data1: 0x0002_14F9,
+        data2: 0,
+        data3: 0,
+        data4: [0xC0, 0, 0, 0, 0, 0, 0, 0x46],
+    };
     /// `IID_IPersistFile` - {0000010B-0000-0000-C000-000000000046}
-    const IID_IPERSIST_FILE: Guid =
-        Guid { data1: 0x0000_010B, data2: 0, data3: 0, data4: [0xC0, 0, 0, 0, 0, 0, 0, 0x46] };
+    const IID_IPERSIST_FILE: Guid = Guid {
+        data1: 0x0000_010B,
+        data2: 0,
+        data3: 0,
+        data4: [0xC0, 0, 0, 0, 0, 0, 0, 0x46],
+    };
 
     #[repr(C)]
     #[allow(dead_code)]
@@ -330,7 +349,10 @@ mod win {
 
     /// A path as a NUL-terminated UTF-16 string, ready for a `*W` entry point.
     fn wide(path: &Path) -> Vec<u16> {
-        path.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
+        path.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
     }
 
     /// The vtable pointer a COM object starts with.
@@ -500,13 +522,17 @@ mod win {
         // A 1-bit icon has no colour bitmap at all - its mask holds stacked AND and XOR halves.
         // Those are museum pieces; refusing beats mis-rendering one.
         if color.is_null() {
-            return Err(CoreError::Unsupported("monochrome icons are not supported".into()));
+            return Err(CoreError::Unsupported(
+                "monochrome icons are not supported".into(),
+            ));
         }
 
         let mut bm: Bitmap = std::mem::zeroed();
         let size = std::mem::size_of::<Bitmap>() as i32;
         if GetObjectW(color, size, (&mut bm as *mut Bitmap).cast()) == 0 {
-            return Err(CoreError::Other("GetObject on the icon bitmap failed".into()));
+            return Err(CoreError::Other(
+                "GetObject on the icon bitmap failed".into(),
+            ));
         }
         if bm.bm_width <= 0
             || bm.bm_height <= 0
@@ -522,16 +548,22 @@ mod win {
 
         let dc = GetDC(std::ptr::null_mut());
         if dc.is_null() {
-            return Err(CoreError::Other("no device context for the icon read".into()));
+            return Err(CoreError::Other(
+                "no device context for the icon read".into(),
+            ));
         }
         let color_bits = read_bgra(dc, color, width, height);
         // The mask is only read when the colour bitmap turns out to have no alpha at all.
         // `as_chunks::<4>()` rather than `chunks_exact(4)`: same grouping, but the pixel is a
         // fixed-size array so indexing it needs no bounds check.
-        let needs_mask =
-            color_bits.as_ref().is_some_and(|bits| bits.as_chunks::<4>().0.iter().all(|px| px[3] == 0));
-        let mask_bits =
-            if needs_mask && !mask.is_null() { read_bgra(dc, mask, width, height) } else { None };
+        let needs_mask = color_bits
+            .as_ref()
+            .is_some_and(|bits| bits.as_chunks::<4>().0.iter().all(|px| px[3] == 0));
+        let mask_bits = if needs_mask && !mask.is_null() {
+            read_bgra(dc, mask, width, height)
+        } else {
+            None
+        };
         ReleaseDC(std::ptr::null_mut(), dc);
 
         let mut pixels =
@@ -562,7 +594,11 @@ mod win {
             px.swap(0, 2);
         }
 
-        Ok(IconBitmap { width, height, rgba: pixels })
+        Ok(IconBitmap {
+            width,
+            height,
+            rgba: pixels,
+        })
     }
 
     /// Read a bitmap as top-down 32bpp BGRA.
@@ -601,7 +637,12 @@ mod tests {
         IconBitmap {
             width,
             height,
-            rgba: colour.iter().copied().cycle().take((width * height * 4) as usize).collect(),
+            rgba: colour
+                .iter()
+                .copied()
+                .cycle()
+                .take((width * height * 4) as usize)
+                .collect(),
         }
     }
 
@@ -610,7 +651,10 @@ mod tests {
         assert!(is_shortcut(Path::new(r"C:\Users\x\Desktop\Discord.lnk")));
         assert!(is_shortcut(Path::new(r"C:\x\THING.LNK")));
         assert!(!is_shortcut(Path::new(r"C:\x\thing.exe")));
-        assert!(!is_shortcut(Path::new(r"C:\x\lnk")), "a bare name is not an extension");
+        assert!(
+            !is_shortcut(Path::new(r"C:\x\lnk")),
+            "a bare name is not an extension"
+        );
         assert!(!is_shortcut(Path::new("")));
     }
 
@@ -653,7 +697,11 @@ mod tests {
         let canvas = center_on_canvas(&icon, 2, 2);
         assert_eq!(canvas.len(), 2 * 2 * 4);
         assert!(
-            canvas.as_chunks::<4>().0.iter().all(|px| *px == [1, 2, 3, 4]),
+            canvas
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|px| *px == [1, 2, 3, 4]),
             "no gaps and no panic"
         );
     }
@@ -671,7 +719,10 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn extracts_a_real_icon_from_a_system_executable() {
-        let candidates = [r"C:\Windows\explorer.exe", r"C:\Windows\System32\notepad.exe"];
+        let candidates = [
+            r"C:\Windows\explorer.exe",
+            r"C:\Windows\System32\notepad.exe",
+        ];
         let Some(exe) = candidates.iter().map(Path::new).find(|p| p.is_file()) else {
             eprintln!("skipping: no system executable found");
             return;

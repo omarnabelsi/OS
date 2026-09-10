@@ -27,7 +27,10 @@ struct HotkeyState {
 
 impl HotkeyState {
     const fn new() -> Self {
-        Self { registered: None, error: None }
+        Self {
+            registered: None,
+            error: None,
+        }
     }
 }
 

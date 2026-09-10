@@ -26,11 +26,18 @@ use crate::{artwork, Core};
 pub fn hydrate(core: &Core, entry: Entry) -> Result<LibraryItem> {
     let artwork = db::artwork::get(&core.db, &entry.id)?;
     let stats = db::stats::get(&core.db, &entry.id)?;
-    Ok(LibraryItem { entry, artwork, stats })
+    Ok(LibraryItem {
+        entry,
+        artwork,
+        stats,
+    })
 }
 
 pub fn list(core: &Core, filter: &EntryFilter) -> Result<Vec<LibraryItem>> {
-    db::entries::list(&core.db, filter)?.into_iter().map(|e| hydrate(core, e)).collect()
+    db::entries::list(&core.db, filter)?
+        .into_iter()
+        .map(|e| hydrate(core, e))
+        .collect()
 }
 
 pub fn get(core: &Core, id: &str) -> Result<Option<LibraryItem>> {
@@ -70,8 +77,7 @@ fn entry_from_discovered(d: &DiscoveredEntry, id: String, created_at: i64, now: 
 pub fn add_manual(core: &Core, input: AddManualEntryInput) -> Result<LibraryItem> {
     let discovered = scanners::manual::discover(&input)?;
     let now = crate::now_secs();
-    let entry =
-        entry_from_discovered(&discovered, uuid::Uuid::new_v4().to_string(), now, now);
+    let entry = entry_from_discovered(&discovered, uuid::Uuid::new_v4().to_string(), now, now);
     db::entries::upsert(&core.db, &entry)?;
     emit_updated(core, vec![entry.id.clone()], "manual_add");
     hydrate(core, entry)
@@ -188,7 +194,15 @@ pub fn run_scan(core: Arc<Core>, job_id: String, sources: Vec<Source>) {
 
     for scanner in found_scanners {
         let source = scanner.source();
-        emit_progress(&core, &job_id, ScanStage::Discovering, Some(source), total, None, false);
+        emit_progress(
+            &core,
+            &job_id,
+            ScanStage::Discovering,
+            Some(source),
+            total,
+            None,
+            false,
+        );
 
         let discovered = match scanner.scan() {
             Ok(d) => d,
@@ -213,8 +227,24 @@ pub fn run_scan(core: Arc<Core>, job_id: String, sources: Vec<Source>) {
         };
 
         total += discovered.len() as u32;
-        emit_progress(&core, &job_id, ScanStage::Parsing, Some(source), total, None, false);
-        emit_progress(&core, &job_id, ScanStage::Saving, Some(source), total, None, false);
+        emit_progress(
+            &core,
+            &job_id,
+            ScanStage::Parsing,
+            Some(source),
+            total,
+            None,
+            false,
+        );
+        emit_progress(
+            &core,
+            &job_id,
+            ScanStage::Saving,
+            Some(source),
+            total,
+            None,
+            false,
+        );
 
         match persist_discovered(&core, &discovered) {
             Ok(ids) => {
@@ -238,8 +268,10 @@ pub fn run_scan(core: Arc<Core>, job_id: String, sources: Vec<Source>) {
                     Some(msg.clone()),
                     false,
                 );
-                core.sink
-                    .emit(CoreEvent::Toast(Toast { level: ToastLevel::Error, message: msg }));
+                core.sink.emit(CoreEvent::Toast(Toast {
+                    level: ToastLevel::Error,
+                    message: msg,
+                }));
             }
         }
     }
@@ -277,7 +309,9 @@ mod tests {
             entry_type: EntryType::Game,
             source: Source::Steam,
             source_id: Some(appid.into()),
-            launch: LaunchSpec::Uri { uri: format!("steam://rungameid/{appid}") },
+            launch: LaunchSpec::Uri {
+                uri: format!("steam://rungameid/{appid}"),
+            },
             install_path: Some(format!("C:/games/{name}")),
             install_size: Some(100),
         }
@@ -311,7 +345,10 @@ mod tests {
             [CoreEvent::LibraryUpdated(u)] if u.reason == "manual_add" && u.entry_ids.len() == 1
         ));
 
-        assert_eq!(get(&core, &item.entry.id).unwrap().unwrap().entry.name, "My Game");
+        assert_eq!(
+            get(&core, &item.entry.id).unwrap().unwrap().entry.name,
+            "My Game"
+        );
         assert!(get(&core, "missing").unwrap().is_none());
     }
 
@@ -348,7 +385,9 @@ mod tests {
         assert!(!updated.stats.hidden);
 
         let events = sink.take();
-        assert!(matches!(events.as_slice(), [CoreEvent::LibraryUpdated(u)] if u.reason == "update"));
+        assert!(
+            matches!(events.as_slice(), [CoreEvent::LibraryUpdated(u)] if u.reason == "update")
+        );
 
         assert!(matches!(
             update(&core, "missing", UpdateEntryPatch::default()),
@@ -374,13 +413,19 @@ mod tests {
 
         remove(&core, &item.entry.id).unwrap();
         assert!(get(&core, &item.entry.id).unwrap().is_none());
-        assert!(matches!(remove(&core, &item.entry.id), Err(CoreError::NotFound(_))));
+        assert!(matches!(
+            remove(&core, &item.entry.id),
+            Err(CoreError::NotFound(_))
+        ));
     }
 
     #[test]
     fn persist_is_idempotent_and_keeps_ids() {
         let (_tmp, core, _sink) = test_core();
-        let batch = vec![discovered("Portal 2", "620"), discovered("Celeste", "504230")];
+        let batch = vec![
+            discovered("Portal 2", "620"),
+            discovered("Celeste", "504230"),
+        ];
 
         let first = persist_discovered(&core, &batch).unwrap();
         assert_eq!(first.len(), 2, "both are new");
@@ -402,11 +447,21 @@ mod tests {
     fn list_hydrates_with_artwork_and_stats() {
         let (_tmp, core, _sink) = test_core();
         persist_discovered(&core, &[discovered("Portal 2", "620")]).unwrap();
-        let id = list(&core, &EntryFilter::default()).unwrap()[0].entry.id.clone();
+        let id = list(&core, &EntryFilter::default()).unwrap()[0]
+            .entry
+            .id
+            .clone();
 
         db::stats::set_flags(&core.db, &id, Some(true), None).unwrap();
-        db::artwork::set_kind(&core.db, &id, ArtworkKind::Grid, Some("C:/g.jpg"), "steam_cdn", false)
-            .unwrap();
+        db::artwork::set_kind(
+            &core.db,
+            &id,
+            ArtworkKind::Grid,
+            Some("C:/g.jpg"),
+            "steam_cdn",
+            false,
+        )
+        .unwrap();
 
         let item = &list(&core, &EntryFilter::default()).unwrap()[0];
         assert!(item.stats.favourite);

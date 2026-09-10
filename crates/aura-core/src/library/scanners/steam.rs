@@ -65,7 +65,11 @@ fn default_locations() -> Option<PathBuf> {
         let home = PathBuf::from(home);
         candidates.push(home.join(".steam").join("steam"));
         candidates.push(home.join(".local").join("share").join("Steam"));
-        candidates.push(home.join("Library").join("Application Support").join("Steam"));
+        candidates.push(
+            home.join("Library")
+                .join("Application Support")
+                .join("Steam"),
+        );
     }
     candidates.into_iter().find(|p| looks_like_steam(p))
 }
@@ -180,7 +184,11 @@ pub fn parse_app_manifest(
     };
     let app = &parsed.root;
 
-    let Some(appid) = app.get_str("appid").map(str::trim).filter(|s| !s.is_empty()) else {
+    let Some(appid) = app
+        .get_str("appid")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
         return Ok(None);
     };
     let Some(name) = app.get_str("name").map(str::trim).filter(|s| !s.is_empty()) else {
@@ -188,7 +196,10 @@ pub fn parse_app_manifest(
     };
 
     // Bit 4 = fully installed. Anything else is downloading, updating or a leftover shortcut.
-    let flags: u64 = app.get_str("StateFlags").and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+    let flags: u64 = app
+        .get_str("StateFlags")
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
     if flags & 4 == 0 {
         return Ok(None);
     }
@@ -196,17 +207,25 @@ pub fn parse_app_manifest(
         return Ok(None);
     }
 
-    let installdir = app.get_str("installdir").map(str::trim).filter(|s| !s.is_empty()).unwrap_or(name);
+    let installdir = app
+        .get_str("installdir")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(name);
     let install_path = steamapps_dir.join("common").join(installdir);
-    let install_size =
-        app.get_str("SizeOnDisk").and_then(|s| s.trim().parse::<u64>().ok()).filter(|v| *v > 0);
+    let install_size = app
+        .get_str("SizeOnDisk")
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0);
 
     Ok(Some(DiscoveredEntry {
         name: name.to_string(),
         entry_type: EntryType::Game,
         source: Source::Steam,
         source_id: Some(appid.to_string()),
-        launch: LaunchSpec::Uri { uri: format!("steam://rungameid/{appid}") },
+        launch: LaunchSpec::Uri {
+            uri: format!("steam://rungameid/{appid}"),
+        },
         install_path: Some(install_path.display().to_string()),
         install_size,
     }))
@@ -308,12 +327,18 @@ mod tests {
         assert!(is_tool("2", "Steam Linux Runtime - Soldier"));
         assert!(is_tool("3", "Microsoft Visual C++ Redistributable"));
         assert!(!is_tool("620", "Portal 2"));
-        assert!(!is_tool("620", "Protonwar"), "substring match must not swallow real games");
+        assert!(
+            !is_tool("620", "Protonwar"),
+            "substring match must not swallow real games"
+        );
         // The separator, not just the prefix, is what marks a Proton tool.
         assert!(is_tool("4", "Proton"), "the bare name is the tool itself");
         assert!(is_tool("5", "Proton - Experimental"));
         assert!(is_tool("6", "Proton Hotfix"));
-        assert!(!is_tool("7", "Protonwar 2"), "a game whose first word merely begins with proton");
+        assert!(
+            !is_tool("7", "Protonwar 2"),
+            "a game whose first word merely begins with proton"
+        );
     }
 
     #[test]
@@ -322,14 +347,23 @@ mod tests {
         let steamapps = tmp.path().join("steamapps");
         std::fs::create_dir_all(&steamapps).unwrap();
         let path = steamapps.join("appmanifest_620.acf");
-        std::fs::write(&path, manifest("620", "Portal 2", "4", "Portal 2", "12345678")).unwrap();
+        std::fs::write(
+            &path,
+            manifest("620", "Portal 2", "4", "Portal 2", "12345678"),
+        )
+        .unwrap();
 
         let e = parse_app_manifest(&steamapps, &path).unwrap().unwrap();
         assert_eq!(e.name, "Portal 2");
         assert_eq!(e.source, Source::Steam);
         assert_eq!(e.entry_type, EntryType::Game);
         assert_eq!(e.source_id.as_deref(), Some("620"));
-        assert_eq!(e.launch, LaunchSpec::Uri { uri: "steam://rungameid/620".into() });
+        assert_eq!(
+            e.launch,
+            LaunchSpec::Uri {
+                uri: "steam://rungameid/620".into()
+            }
+        );
         assert_eq!(e.install_size, Some(12_345_678));
 
         // Compare by components so the assertion holds on either path separator.
@@ -346,11 +380,27 @@ mod tests {
 
         // StateFlags 1026 = downloading, bit 4 not set
         let downloading = steamapps.join("appmanifest_1.acf");
-        std::fs::write(&downloading, manifest("1", "Half Downloaded", "1026", "hd", "1")).unwrap();
-        assert!(parse_app_manifest(&steamapps, &downloading).unwrap().is_none());
+        std::fs::write(
+            &downloading,
+            manifest("1", "Half Downloaded", "1026", "hd", "1"),
+        )
+        .unwrap();
+        assert!(parse_app_manifest(&steamapps, &downloading)
+            .unwrap()
+            .is_none());
 
         let redist = steamapps.join("appmanifest_228980.acf");
-        std::fs::write(&redist, manifest(REDIST_APPID, "Steamworks Common Redistributables", "4", "r", "1")).unwrap();
+        std::fs::write(
+            &redist,
+            manifest(
+                REDIST_APPID,
+                "Steamworks Common Redistributables",
+                "4",
+                "r",
+                "1",
+            ),
+        )
+        .unwrap();
         assert!(parse_app_manifest(&steamapps, &redist).unwrap().is_none());
 
         let nameless = steamapps.join("appmanifest_2.acf");
@@ -379,10 +429,22 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("Steam");
         std::fs::create_dir_all(root.join("steamapps")).unwrap();
-        assert_eq!(library_folders(&root).unwrap().len(), 1, "no vdf -> just the root");
+        assert_eq!(
+            library_folders(&root).unwrap().len(),
+            1,
+            "no vdf -> just the root"
+        );
 
-        std::fs::write(root.join("steamapps").join("libraryfolders.vdf"), "}}} broken").unwrap();
-        assert_eq!(library_folders(&root).unwrap().len(), 1, "broken vdf -> just the root");
+        std::fs::write(
+            root.join("steamapps").join("libraryfolders.vdf"),
+            "}}} broken",
+        )
+        .unwrap();
+        assert_eq!(
+            library_folders(&root).unwrap().len(),
+            1,
+            "broken vdf -> just the root"
+        );
     }
 
     #[test]
@@ -392,17 +454,42 @@ mod tests {
         let root = fake_steam(tmp.path(), Some(&extra));
 
         let a = root.join("steamapps");
-        std::fs::write(a.join("appmanifest_620.acf"), manifest("620", "Portal 2", "4", "Portal 2", "10")).unwrap();
-        std::fs::write(a.join("appmanifest_228980.acf"), manifest(REDIST_APPID, "Steamworks Common Redistributables", "4", "r", "1")).unwrap();
+        std::fs::write(
+            a.join("appmanifest_620.acf"),
+            manifest("620", "Portal 2", "4", "Portal 2", "10"),
+        )
+        .unwrap();
+        std::fs::write(
+            a.join("appmanifest_228980.acf"),
+            manifest(
+                REDIST_APPID,
+                "Steamworks Common Redistributables",
+                "4",
+                "r",
+                "1",
+            ),
+        )
+        .unwrap();
         std::fs::write(a.join("not-a-manifest.txt"), "ignored").unwrap();
 
         let b = extra.join("steamapps");
-        std::fs::write(b.join("appmanifest_504230.acf"), manifest("504230", "Celeste", "4", "Celeste", "20")).unwrap();
+        std::fs::write(
+            b.join("appmanifest_504230.acf"),
+            manifest("504230", "Celeste", "4", "Celeste", "20"),
+        )
+        .unwrap();
         // Duplicate of Portal 2 in the second library - must be counted once.
-        std::fs::write(b.join("appmanifest_620.acf"), manifest("620", "Portal 2", "4", "Portal 2", "10")).unwrap();
+        std::fs::write(
+            b.join("appmanifest_620.acf"),
+            manifest("620", "Portal 2", "4", "Portal 2", "10"),
+        )
+        .unwrap();
 
         let found = scan_root(&root).unwrap();
-        assert_eq!(found.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["Celeste", "Portal 2"]);
+        assert_eq!(
+            found.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            ["Celeste", "Portal 2"]
+        );
     }
 
     #[test]

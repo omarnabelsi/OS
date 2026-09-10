@@ -35,7 +35,9 @@ fn norm_dir(p: &Path) -> String {
 impl ProcessSnapshot {
     /// Take a fresh snapshot of all processes (pid, parent, exe path).
     pub fn take() -> ProcessSnapshot {
-        let mut snapshot = ProcessSnapshot { system: System::new() };
+        let mut snapshot = ProcessSnapshot {
+            system: System::new(),
+        };
         snapshot.refresh();
         snapshot
     }
@@ -57,7 +59,10 @@ impl ProcessSnapshot {
         let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
         for (child_pid, process) in self.system.processes() {
             if let Some(parent) = process.parent() {
-                children.entry(parent.as_u32()).or_default().push(child_pid.as_u32());
+                children
+                    .entry(parent.as_u32())
+                    .or_default()
+                    .push(child_pid.as_u32());
             }
         }
 
@@ -173,11 +178,20 @@ mod tests {
     fn snapshot_sees_this_process_and_its_ancestry() {
         let snapshot = ProcessSnapshot::take();
         let me = std::process::id();
-        assert!(snapshot.is_alive(me), "the test process must be in its own snapshot");
-        assert!(!snapshot.is_alive(u32::MAX), "a bogus pid must not be alive");
+        assert!(
+            snapshot.is_alive(me),
+            "the test process must be in its own snapshot"
+        );
+        assert!(
+            !snapshot.is_alive(u32::MAX),
+            "a bogus pid must not be alive"
+        );
 
         let mine = snapshot.descendants(me);
-        assert!(mine.contains(&me), "descendants always include the root pid");
+        assert!(
+            mine.contains(&me),
+            "descendants always include the root pid"
+        );
     }
 
     #[test]
@@ -189,7 +203,10 @@ mod tests {
                 vec!["/c".to_string(), "ping -n 4 127.0.0.1 >NUL".to_string()],
             )
         } else {
-            ("/bin/sh".to_string(), vec!["-c".to_string(), "sleep 3".to_string()])
+            (
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), "sleep 3".to_string()],
+            )
         };
         if !Path::new(&exe).is_file() {
             eprintln!("skipping: {exe} not present");
@@ -219,7 +236,9 @@ mod tests {
     #[test]
     fn processes_under_a_bogus_dir_is_empty() {
         let snapshot = ProcessSnapshot::take();
-        assert!(snapshot.processes_under_dir(Path::new(r"Z:\nothing\here")).is_empty());
+        assert!(snapshot
+            .processes_under_dir(Path::new(r"Z:\nothing\here"))
+            .is_empty());
         assert!(snapshot.processes_under_dir(Path::new("")).is_empty());
         assert!(snapshot.processes_matching_exe(Path::new("")).is_empty());
     }

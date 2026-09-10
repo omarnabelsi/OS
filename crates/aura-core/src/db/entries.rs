@@ -62,8 +62,14 @@ pub fn upsert(db: &Db, entry: &Entry) -> Result<()> {
             entry.updated_at,
         ],
     )?;
-    conn.execute("INSERT OR IGNORE INTO artwork (entry_id) VALUES (?1)", params![entry.id])?;
-    conn.execute("INSERT OR IGNORE INTO stats (entry_id) VALUES (?1)", params![entry.id])?;
+    conn.execute(
+        "INSERT OR IGNORE INTO artwork (entry_id) VALUES (?1)",
+        params![entry.id],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO stats (entry_id) VALUES (?1)",
+        params![entry.id],
+    )?;
     Ok(())
 }
 
@@ -94,7 +100,9 @@ pub fn collection_entry_ids(db: &Db, collection_id: &str) -> Result<Vec<String>>
 pub fn find_by_source(db: &Db, source: Source, source_id: &str) -> Result<Option<Entry>> {
     let conn = db.conn();
     let sql = format!("SELECT {COLUMNS} FROM entries e WHERE e.source = ?1 AND e.source_id = ?2");
-    Ok(conn.query_row(&sql, params![source.as_str(), source_id], row_to_entry).optional()?)
+    Ok(conn
+        .query_row(&sql, params![source.as_str(), source_id], row_to_entry)
+        .optional()?)
 }
 
 /// Filtered, sorted listing. Hidden entries are excluded unless `filter.include_hidden`.
@@ -119,9 +127,17 @@ pub fn list(db: &Db, filter: &EntryFilter) -> Result<Vec<Entry>> {
     if filter.favourites_only {
         sql.push_str(" AND COALESCE(s.favourite, 0) = 1");
     }
-    if let Some(term) = filter.search.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(term) = filter
+        .search
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         // Escape LIKE wildcards so a user typing % or _ searches for them literally.
-        let escaped = term.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let escaped = term
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
         args.push(Value::Text(format!("%{escaped}%")));
         sql.push_str(&format!(" AND e.name LIKE ?{} ESCAPE '\\'", args.len()));
     }
@@ -153,7 +169,12 @@ pub fn list(db: &Db, filter: &EntryFilter) -> Result<Vec<Entry>> {
 }
 
 /// Apply `name` / `launch` from the patch (flags live in `stats`). Returns the updated entry.
-pub fn update_patch(db: &Db, id: &str, patch: &UpdateEntryPatch, now: i64) -> Result<Option<Entry>> {
+pub fn update_patch(
+    db: &Db,
+    id: &str,
+    patch: &UpdateEntryPatch,
+    now: i64,
+) -> Result<Option<Entry>> {
     if get(db, id)?.is_none() {
         return Ok(None);
     }
@@ -210,7 +231,9 @@ mod tests {
             entry_type: EntryType::Game,
             source,
             source_id: source_id.map(String::from),
-            launch: LaunchSpec::Uri { uri: format!("steam://rungameid/{id}") },
+            launch: LaunchSpec::Uri {
+                uri: format!("steam://rungameid/{id}"),
+            },
             install_path: None,
             install_size: Some(1024),
             created_at: 10,
@@ -226,7 +249,9 @@ mod tests {
         assert_eq!(get(&db, "a").unwrap().unwrap(), e);
         let n: i64 = db
             .conn()
-            .query_row("SELECT count(*) FROM artwork WHERE entry_id='a'", [], |r| r.get(0))
+            .query_row("SELECT count(*) FROM artwork WHERE entry_id='a'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(n, 1, "upsert must create the artwork row");
 
@@ -235,7 +260,13 @@ mod tests {
         e2.updated_at = 20;
         upsert(&db, &e2).unwrap();
         assert_eq!(get(&db, "a").unwrap().unwrap().name, "Portal II");
-        assert_eq!(find_by_source(&db, Source::Steam, "620").unwrap().unwrap().id, "a");
+        assert_eq!(
+            find_by_source(&db, Source::Steam, "620")
+                .unwrap()
+                .unwrap()
+                .id,
+            "a"
+        );
     }
 
     #[test]
@@ -247,21 +278,49 @@ mod tests {
         super::super::stats::set_flags(&db, "c", None, Some(true)).unwrap();
 
         let all = list(&db, &EntryFilter::default()).unwrap();
-        assert_eq!(all.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["apple", "Zebra"]);
+        assert_eq!(
+            all.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            ["apple", "Zebra"]
+        );
 
-        let with_hidden =
-            list(&db, &EntryFilter { include_hidden: true, ..Default::default() }).unwrap();
+        let with_hidden = list(
+            &db,
+            &EntryFilter {
+                include_hidden: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(with_hidden.len(), 3);
 
-        let steam =
-            list(&db, &EntryFilter { source: Some(Source::Steam), ..Default::default() }).unwrap();
+        let steam = list(
+            &db,
+            &EntryFilter {
+                source: Some(Source::Steam),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(steam.len(), 2);
 
-        let search =
-            list(&db, &EntryFilter { search: Some("ppl".into()), ..Default::default() }).unwrap();
+        let search = list(
+            &db,
+            &EntryFilter {
+                search: Some("ppl".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(search.len(), 1);
 
-        let limited = list(&db, &EntryFilter { limit: Some(1), ..Default::default() }).unwrap();
+        let limited = list(
+            &db,
+            &EntryFilter {
+                limit: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(limited.len(), 1);
     }
 
@@ -270,8 +329,14 @@ mod tests {
         let db = db();
         upsert(&db, &entry("a", "100% Orange Juice", Source::Manual, None)).unwrap();
         upsert(&db, &entry("b", "Other", Source::Manual, None)).unwrap();
-        let hits =
-            list(&db, &EntryFilter { search: Some("100%".into()), ..Default::default() }).unwrap();
+        let hits = list(
+            &db,
+            &EntryFilter {
+                search: Some("100%".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
     }
 
@@ -279,7 +344,10 @@ mod tests {
     fn patch_updates_and_delete_cascades() {
         let db = db();
         upsert(&db, &entry("a", "Old", Source::Manual, None)).unwrap();
-        let patch = UpdateEntryPatch { name: Some("New".into()), ..Default::default() };
+        let patch = UpdateEntryPatch {
+            name: Some("New".into()),
+            ..Default::default()
+        };
         let updated = update_patch(&db, "a", &patch, 99).unwrap().unwrap();
         assert_eq!(updated.name, "New");
         assert_eq!(updated.updated_at, 99);
@@ -289,7 +357,9 @@ mod tests {
         assert!(!delete(&db, "a").unwrap());
         let n: i64 = db
             .conn()
-            .query_row("SELECT count(*) FROM stats WHERE entry_id='a'", [], |r| r.get(0))
+            .query_row("SELECT count(*) FROM stats WHERE entry_id='a'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(n, 0, "stats must cascade");
     }

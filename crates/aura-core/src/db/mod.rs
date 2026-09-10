@@ -34,13 +34,17 @@ impl Db {
     pub fn open(path: &Path) -> Result<Db> {
         let conn = Connection::open(path)?;
         Self::configure(&conn)?;
-        Ok(Db { conn: Mutex::new(conn) })
+        Ok(Db {
+            conn: Mutex::new(conn),
+        })
     }
 
     pub fn open_in_memory() -> Result<Db> {
         let conn = Connection::open_in_memory()?;
         Self::configure(&conn)?;
-        Ok(Db { conn: Mutex::new(conn) })
+        Ok(Db {
+            conn: Mutex::new(conn),
+        })
     }
 
     fn configure(conn: &Connection) -> Result<()> {
@@ -100,7 +104,8 @@ impl Db {
             return Ok(None);
         }
         // Fold the write-ahead log into the main file first, or the copy misses recent writes.
-        self.conn().execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        self.conn()
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
 
         let mut name = db_path.file_name().unwrap_or_default().to_os_string();
         name.push(format!(".bak-v{version}"));
@@ -119,11 +124,7 @@ impl Db {
     ///
     /// `table` and the declarations are compile-time literals from `migrate`, never user input,
     /// which is why they can be formatted into the statement.
-    fn add_missing_columns(
-        conn: &Connection,
-        table: &str,
-        columns: &[(&str, &str)],
-    ) -> Result<()> {
+    fn add_missing_columns(conn: &Connection, table: &str, columns: &[(&str, &str)]) -> Result<()> {
         let existing: std::collections::HashSet<String> = {
             let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
             let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
@@ -138,7 +139,9 @@ impl Db {
     }
 
     pub fn schema_version(&self) -> Result<i64> {
-        Ok(self.conn().query_row("PRAGMA user_version", [], |r| r.get(0))?)
+        Ok(self
+            .conn()
+            .query_row("PRAGMA user_version", [], |r| r.get(0))?)
     }
 }
 
@@ -184,7 +187,11 @@ mod tests {
                 [],
             )
             .unwrap();
-            conn.execute("INSERT INTO folders (id, path) VALUES ('f1', 'C:/games')", []).unwrap();
+            conn.execute(
+                "INSERT INTO folders (id, path) VALUES ('f1', 'C:/games')",
+                [],
+            )
+            .unwrap();
         }
 
         db.migrate().unwrap();
@@ -192,18 +199,26 @@ mod tests {
 
         let conn = db.conn();
         let (playtime, fav): (i64, i64) = conn
-            .query_row("SELECT playtime_secs, favourite FROM stats WHERE entry_id='e1'", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+            .query_row(
+                "SELECT playtime_secs, favourite FROM stats WHERE entry_id='e1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
-        assert_eq!((playtime, fav), (9999, 1), "playtime and favourites must survive");
+        assert_eq!(
+            (playtime, fav),
+            (9999, 1),
+            "playtime and favourites must survive"
+        );
 
         // The pre-existing folder gains the new columns with sane defaults.
-        let kind: String =
-            conn.query_row("SELECT kind FROM folders WHERE id='f1'", [], |r| r.get(0)).unwrap();
+        let kind: String = conn
+            .query_row("SELECT kind FROM folders WHERE id='f1'", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(kind, "filesystem");
-        let shape: Option<String> =
-            conn.query_row("SELECT shape FROM folders WHERE id='f1'", [], |r| r.get(0)).unwrap();
+        let shape: Option<String> = conn
+            .query_row("SELECT shape FROM folders WHERE id='f1'", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(shape, None);
     }
 
@@ -223,7 +238,10 @@ mod tests {
         {
             let db = Db::open(&path).unwrap();
             db.conn().pragma_update(None, "user_version", 1i64).unwrap();
-            let backup = db.backup_before_migration(&path).unwrap().expect("v1 must be backed up");
+            let backup = db
+                .backup_before_migration(&path)
+                .unwrap()
+                .expect("v1 must be backed up");
             assert!(backup.is_file());
             assert_eq!(backup.file_name().unwrap(), "aura.db.bak-v1");
             db.migrate().unwrap();
@@ -242,7 +260,8 @@ mod tests {
         // Exactly the half-finished state: v2 columns present, version still says v1.
         db.conn().pragma_update(None, "user_version", 1i64).unwrap();
 
-        db.migrate().expect("replaying the v2 step must not fail on duplicate columns");
+        db.migrate()
+            .expect("replaying the v2 step must not fail on duplicate columns");
         assert_eq!(db.schema_version().unwrap(), 2);
     }
 }

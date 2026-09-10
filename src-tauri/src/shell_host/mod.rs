@@ -21,7 +21,9 @@ pub fn resolve_bundled_themes_dir(app: &AppHandle) -> PathBuf {
             return packaged;
         }
     }
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("themes");
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("themes");
     if dev.exists() {
         return dev;
     }

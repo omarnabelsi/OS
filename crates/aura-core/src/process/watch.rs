@@ -48,7 +48,11 @@ pub struct ExitInfo {
 pub fn is_running(snapshot: &ProcessSnapshot, target: &WatchTarget) -> bool {
     // A: the process we started, or anything it spawned.
     let owned: Vec<u32> = match target.root_pid {
-        Some(root) => snapshot.descendants(root).into_iter().filter(|p| snapshot.is_alive(*p)).collect(),
+        Some(root) => snapshot
+            .descendants(root)
+            .into_iter()
+            .filter(|p| snapshot.is_alive(*p))
+            .collect(),
         None => Vec::new(),
     };
     if !owned.is_empty() {
@@ -115,7 +119,10 @@ pub fn wait_for_exit(target: WatchTarget, child: Option<std::process::Child>) ->
         }
     }
 
-    ExitInfo { exit_code, duration: started.elapsed() }
+    ExitInfo {
+        exit_code,
+        duration: started.elapsed(),
+    }
 }
 
 #[cfg(test)]
@@ -141,7 +148,10 @@ mod tests {
     #[test]
     fn this_process_counts_as_running() {
         let snapshot = ProcessSnapshot::take();
-        let target = WatchTarget { root_pid: Some(std::process::id()), ..Default::default() };
+        let target = WatchTarget {
+            root_pid: Some(std::process::id()),
+            ..Default::default()
+        };
         assert!(is_running(&snapshot, &target));
     }
 
@@ -161,11 +171,18 @@ mod tests {
     fn returns_promptly_when_nothing_is_running() {
         let started = Instant::now();
         let info = wait_for_exit(
-            WatchTarget { root_pid: Some(u32::MAX), ..fast_target() },
+            WatchTarget {
+                root_pid: Some(u32::MAX),
+                ..fast_target()
+            },
             None,
         );
         // grace (50ms) + debounce (60ms) must both elapse, but it must not hang.
-        assert!(info.duration >= Duration::from_millis(100), "got {:?}", info.duration);
+        assert!(
+            info.duration >= Duration::from_millis(100),
+            "got {:?}",
+            info.duration
+        );
         assert!(started.elapsed() < Duration::from_secs(10));
         assert_eq!(info.exit_code, None);
     }
@@ -178,7 +195,10 @@ mod tests {
                 vec!["/c".to_string(), "exit 3".to_string()],
             )
         } else {
-            ("/bin/sh".to_string(), vec!["-c".to_string(), "exit 3".to_string()])
+            (
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), "exit 3".to_string()],
+            )
         };
         if !Path::new(&exe).is_file() {
             eprintln!("skipping: {exe} not present");
@@ -194,7 +214,13 @@ mod tests {
             .unwrap();
         let pid = child.id();
 
-        let info = wait_for_exit(WatchTarget { root_pid: Some(pid), ..fast_target() }, Some(child));
+        let info = wait_for_exit(
+            WatchTarget {
+                root_pid: Some(pid),
+                ..fast_target()
+            },
+            Some(child),
+        );
         assert_eq!(info.exit_code, Some(3));
     }
 }

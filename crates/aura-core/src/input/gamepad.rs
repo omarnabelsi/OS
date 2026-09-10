@@ -79,7 +79,11 @@ pub fn run(sink: Arc<dyn EventSink>, stop: Arc<AtomicBool>) {
     // Announce pads that were already plugged in before we started listening.
     for (id, pad) in gilrs.gamepads() {
         let gamepad_id = usize::from(id) as u32;
-        sink.emit(connection_event(gamepad_id, true, Some(pad.name().to_string())));
+        sink.emit(connection_event(
+            gamepad_id,
+            true,
+            Some(pad.name().to_string()),
+        ));
     }
 
     // Last emitted value per (pad, axis), so we can suppress jitter.
@@ -111,8 +115,10 @@ pub fn run(sink: Arc<dyn EventSink>, stop: Arc<AtomicBool>) {
                 // Analog triggers report here; the digital buttons are covered above, so only
                 // the two pressure-sensitive ones are forwarded to avoid duplicate events.
                 gilrs::EventType::ButtonChanged(button, value, _) => {
-                    if matches!(button, gilrs::Button::LeftTrigger2 | gilrs::Button::RightTrigger2)
-                    {
+                    if matches!(
+                        button,
+                        gilrs::Button::LeftTrigger2 | gilrs::Button::RightTrigger2
+                    ) {
                         if let Some(mapped) = map_button(button) {
                             let pressed = value > 0.5;
                             sink.emit(button_event(gamepad_id, mapped, value, pressed, name));
@@ -120,7 +126,9 @@ pub fn run(sink: Arc<dyn EventSink>, stop: Arc<AtomicBool>) {
                     }
                 }
                 gilrs::EventType::AxisChanged(axis, raw, _) => {
-                    let Some(mapped) = map_axis(axis) else { continue };
+                    let Some(mapped) = map_axis(axis) else {
+                        continue;
+                    };
                     let value = apply_deadzone(raw, STICK_DEADZONE);
                     let key = (gamepad_id, mapped);
                     let previous = last_axis.get(&key).copied().unwrap_or(0.0);
@@ -243,10 +251,22 @@ mod tests {
         assert_eq!(map_button(B::LeftThumb), Some(GamepadButton::LeftStick));
         assert_eq!(map_button(B::DPadLeft), Some(GamepadButton::DpadLeft));
         // Bumper vs analog trigger is the easy one to get backwards.
-        assert_eq!(map_button(B::LeftTrigger), Some(GamepadButton::LeftShoulder));
-        assert_eq!(map_button(B::LeftTrigger2), Some(GamepadButton::LeftTrigger));
-        assert_eq!(map_button(B::RightTrigger), Some(GamepadButton::RightShoulder));
-        assert_eq!(map_button(B::RightTrigger2), Some(GamepadButton::RightTrigger));
+        assert_eq!(
+            map_button(B::LeftTrigger),
+            Some(GamepadButton::LeftShoulder)
+        );
+        assert_eq!(
+            map_button(B::LeftTrigger2),
+            Some(GamepadButton::LeftTrigger)
+        );
+        assert_eq!(
+            map_button(B::RightTrigger),
+            Some(GamepadButton::RightShoulder)
+        );
+        assert_eq!(
+            map_button(B::RightTrigger2),
+            Some(GamepadButton::RightTrigger)
+        );
         assert_eq!(map_button(B::Unknown), None);
     }
 
@@ -269,6 +289,9 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(true));
         // Returns promptly whether or not gilrs initialises on this machine.
         run(sink.clone(), stop);
-        assert!(sink.take().iter().all(|e| matches!(e, CoreEvent::Gamepad(_))));
+        assert!(sink
+            .take()
+            .iter()
+            .all(|e| matches!(e, CoreEvent::Gamepad(_))));
     }
 }

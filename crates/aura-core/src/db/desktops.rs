@@ -1,4 +1,4 @@
-﻿//! `desktops` and `desktop_items` repositories.
+//! `desktops` and `desktop_items` repositories.
 //!
 //! Kept in one file because the two tables are a parent and its children and are never read
 //! apart: loading a desktop without its items is not a useful operation.
@@ -40,7 +40,9 @@ pub fn list(db: &Db) -> Result<Vec<Desktop>> {
 pub fn get(db: &Db, id: &str) -> Result<Option<Desktop>> {
     let conn = db.conn();
     let sql = format!("SELECT {DESKTOP_COLS} FROM desktops WHERE id = ?1");
-    Ok(conn.query_row(&sql, params![id], row_to_desktop).optional()?)
+    Ok(conn
+        .query_row(&sql, params![id], row_to_desktop)
+        .optional()?)
 }
 
 pub fn upsert(db: &Db, desktop: &Desktop) -> Result<()> {
@@ -58,7 +60,13 @@ pub fn upsert(db: &Db, desktop: &Desktop) -> Result<()> {
            wallpaper     = excluded.wallpaper,
            grid_settings = excluded.grid_settings,
            sort_order    = excluded.sort_order",
-        params![desktop.id, desktop.name, wallpaper, grid, desktop.sort_order],
+        params![
+            desktop.id,
+            desktop.name,
+            wallpaper,
+            grid,
+            desktop.sort_order
+        ],
     )?;
     Ok(())
 }
@@ -118,7 +126,9 @@ pub fn get_item(db: &Db, id: &str) -> Result<Option<DesktopItem>> {
 
 pub fn add_item(db: &Db, input: &NewDesktopItem) -> Result<DesktopItem> {
     if input.desktop_id.trim().is_empty() {
-        return Err(CoreError::Invalid("a desktop item needs a desktopId".into()));
+        return Err(CoreError::Invalid(
+            "a desktop item needs a desktopId".into(),
+        ));
     }
     let item = DesktopItem {
         id: uuid::Uuid::new_v4().to_string(),
@@ -252,7 +262,9 @@ mod tests {
         assert_eq!(count(&db).unwrap(), 0);
 
         let mut d = desktop("d1");
-        d.wallpaper = Some(WallpaperSetting::Color { hex: "#101014".into() });
+        d.wallpaper = Some(WallpaperSetting::Color {
+            hex: "#101014".into(),
+        });
         upsert(&db, &d).unwrap();
         assert_eq!(get(&db, "d1").unwrap().unwrap(), d);
 
@@ -271,22 +283,40 @@ mod tests {
         let db = db();
         upsert(&db, &desktop("d1")).unwrap();
         db.conn()
-            .execute("UPDATE desktops SET grid_settings = 'not json' WHERE id = 'd1'", [])
+            .execute(
+                "UPDATE desktops SET grid_settings = 'not json' WHERE id = 'd1'",
+                [],
+            )
             .unwrap();
         // Renders with defaults rather than refusing to load the desktop at all.
-        assert_eq!(get(&db, "d1").unwrap().unwrap().grid, GridSettings::default());
+        assert_eq!(
+            get(&db, "d1").unwrap().unwrap().grid,
+            GridSettings::default()
+        );
     }
 
     #[test]
     fn items_are_scoped_to_their_desktop_and_ordered() {
         let db = db();
         upsert(&db, &desktop("d1")).unwrap();
-        upsert(&db, &Desktop { id: "d2".into(), ..desktop("d2") }).unwrap();
+        upsert(
+            &db,
+            &Desktop {
+                id: "d2".into(),
+                ..desktop("d2")
+            },
+        )
+        .unwrap();
 
         for (desktop_id, x, y) in [("d1", 1, 1), ("d1", 0, 0), ("d2", 5, 5)] {
             add_item(
                 &db,
-                &NewDesktopItem { desktop_id: desktop_id.into(), x, y, ..Default::default() },
+                &NewDesktopItem {
+                    desktop_id: desktop_id.into(),
+                    x,
+                    y,
+                    ..Default::default()
+                },
             )
             .unwrap();
         }
@@ -318,15 +348,33 @@ mod tests {
         .unwrap();
 
         // What a drag sends: position only.
-        let moved = patch_item(&db, &item.id, &DesktopItemPatch { x: Some(7), y: Some(9), ..Default::default() })
-            .unwrap();
+        let moved = patch_item(
+            &db,
+            &item.id,
+            &DesktopItemPatch {
+                x: Some(7),
+                y: Some(9),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!((moved.x, moved.y), (7, 9));
-        assert_eq!(moved.label_override.as_deref(), Some("Mine"), "the label is untouched");
+        assert_eq!(
+            moved.label_override.as_deref(),
+            Some("Mine"),
+            "the label is untouched"
+        );
 
         // A zero or negative span would make an item unclickable.
-        let squashed =
-            patch_item(&db, &item.id, &DesktopItemPatch { width: Some(0), ..Default::default() })
-                .unwrap();
+        let squashed = patch_item(
+            &db,
+            &item.id,
+            &DesktopItemPatch {
+                width: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(squashed.width, 1);
 
         assert!(matches!(

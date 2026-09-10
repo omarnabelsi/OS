@@ -37,7 +37,10 @@ fn theme_dirs(root: &Path) -> Vec<PathBuf> {
 
 impl ThemeService {
     pub fn new(bundled_dir: PathBuf, user_dir: PathBuf) -> Self {
-        Self { bundled_dir, user_dir }
+        Self {
+            bundled_dir,
+            user_dir,
+        }
     }
 
     pub fn list(&self) -> Result<Vec<ThemeInfo>> {
@@ -129,7 +132,10 @@ mod tests {
         write_theme(&svc.user_dir, "neon-city", "Neon City", "0.2.0");
 
         let list = svc.list().unwrap();
-        assert_eq!(list.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["aura-default", "neon-city"]);
+        assert_eq!(
+            list.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            ["aura-default", "neon-city"]
+        );
         assert!(list[0].builtin);
         assert!(!list[1].builtin);
     }
@@ -184,7 +190,10 @@ mod tests {
 
         assert!(svc.locate("../../etc").is_none());
         assert!(svc.locate("..").is_none());
-        assert!(svc.locate("Aura-Default").is_none(), "ids are kebab-case only");
+        assert!(
+            svc.locate("Aura-Default").is_none(),
+            "ids are kebab-case only"
+        );
         assert!(svc.locate("aura-default").is_some());
     }
 

@@ -45,7 +45,9 @@ fn shell_open(target: &str) -> Result<()> {
         c
     };
 
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     // explorer.exe returns a non-zero exit code even on success, so the status is ignored;
     // only a failure to start the helper at all is an error.
     match cmd.spawn() {
@@ -76,12 +78,17 @@ pub fn spawn(spec: &LaunchSpec) -> Result<Spawned> {
                 cmd.current_dir(dir);
             }
 
-            cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
 
             let child = cmd
                 .spawn()
                 .map_err(|e| CoreError::Launch(format!("cannot start `{path}`: {e}")))?;
-            Ok(Spawned { pid: Some(child.id()), child: Some(child) })
+            Ok(Spawned {
+                pid: Some(child.id()),
+                child: Some(child),
+            })
         }
 
         LaunchSpec::Uri { uri } => {
@@ -89,7 +96,10 @@ pub fn spawn(spec: &LaunchSpec) -> Result<Spawned> {
                 return Err(CoreError::Invalid("launch uri must not be empty".into()));
             }
             shell_open(uri)?;
-            Ok(Spawned { pid: None, child: None })
+            Ok(Spawned {
+                pid: None,
+                child: None,
+            })
         }
 
         LaunchSpec::Shell { target } => {
@@ -97,7 +107,10 @@ pub fn spawn(spec: &LaunchSpec) -> Result<Spawned> {
                 return Err(CoreError::Invalid("shell target must not be empty".into()));
             }
             shell_open(target)?;
-            Ok(Spawned { pid: None, child: None })
+            Ok(Spawned {
+                pid: None,
+                child: None,
+            })
         }
     }
 }
@@ -108,10 +121,24 @@ mod tests {
 
     #[test]
     fn exe_path_only_for_exe_specs() {
-        let exe = LaunchSpec::Exe { path: "C:/g/a.exe".into(), args: vec![], cwd: None };
+        let exe = LaunchSpec::Exe {
+            path: "C:/g/a.exe".into(),
+            args: vec![],
+            cwd: None,
+        };
         assert_eq!(exe_path(&exe), Some(PathBuf::from("C:/g/a.exe")));
-        assert_eq!(exe_path(&LaunchSpec::Uri { uri: "steam://rungameid/1".into() }), None);
-        assert_eq!(exe_path(&LaunchSpec::Shell { target: "shell:AppsFolder".into() }), None);
+        assert_eq!(
+            exe_path(&LaunchSpec::Uri {
+                uri: "steam://rungameid/1".into()
+            }),
+            None
+        );
+        assert_eq!(
+            exe_path(&LaunchSpec::Shell {
+                target: "shell:AppsFolder".into()
+            }),
+            None
+        );
     }
 
     #[test]
@@ -131,7 +158,9 @@ mod tests {
             Err(CoreError::Invalid(_))
         ));
         assert!(matches!(
-            spawn(&LaunchSpec::Shell { target: String::new() }),
+            spawn(&LaunchSpec::Shell {
+                target: String::new()
+            }),
             Err(CoreError::Invalid(_))
         ));
     }
@@ -140,16 +169,26 @@ mod tests {
     #[test]
     fn spawns_a_real_process_and_reports_its_pid() {
         let (exe, args) = if cfg!(windows) {
-            (which_windows_exe(), vec!["/c".to_string(), "exit".to_string()])
+            (
+                which_windows_exe(),
+                vec!["/c".to_string(), "exit".to_string()],
+            )
         } else {
-            ("/bin/sh".to_string(), vec!["-c".to_string(), "exit 0".to_string()])
+            (
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), "exit 0".to_string()],
+            )
         };
         if !Path::new(&exe).is_file() {
             eprintln!("skipping: {exe} not present");
             return;
         }
 
-        let spec = LaunchSpec::Exe { path: exe, args, cwd: None };
+        let spec = LaunchSpec::Exe {
+            path: exe,
+            args,
+            cwd: None,
+        };
         let mut spawned = spawn(&spec).unwrap();
         assert!(spawned.pid.is_some());
         let status = spawned.child.as_mut().unwrap().wait().unwrap();

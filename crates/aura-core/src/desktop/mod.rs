@@ -1,4 +1,4 @@
-﻿//! Desktop service: the surface, what sits on it, and what a folder resolves to.
+//! Desktop service: the surface, what sits on it, and what a folder resolves to.
 //!
 //! This is the model layer for the shell-as-desktop work. It owns three things:
 //!   - desktops and the items placed on them (positions in grid cells, never pixels);
@@ -23,7 +23,9 @@ pub const SEEDED_FAVOURITES: &str = "smart:favourites";
 pub const SEEDED_RECENT: &str = "smart:recently-played";
 
 fn emit_changed(core: &Core, reason: &str) {
-    core.sink.emit(CoreEvent::DesktopUpdated(DesktopUpdated { reason: reason.to_string() }));
+    core.sink.emit(CoreEvent::DesktopUpdated(DesktopUpdated {
+        reason: reason.to_string(),
+    }));
 }
 
 // ---- desktops --------------------------------------------------------------------------------
@@ -63,7 +65,9 @@ pub fn update_desktop(core: &Core, desktop: &Desktop) -> Result<Desktop> {
 pub fn delete_desktop(core: &Core, id: &str) -> Result<()> {
     // Leaving the user with no surface at all is not a state the UI can render.
     if db::desktops::count(&core.db)? <= 1 {
-        return Err(CoreError::Invalid("the last desktop cannot be deleted".into()));
+        return Err(CoreError::Invalid(
+            "the last desktop cannot be deleted".into(),
+        ));
     }
     if !db::desktops::delete(&core.db, id)? {
         return Err(CoreError::NotFound(format!("desktop `{id}`")));
@@ -80,7 +84,10 @@ pub fn list_items(core: &Core, desktop_id: &str) -> Result<Vec<DesktopItem>> {
 
 pub fn add_item(core: &Core, input: NewDesktopItem) -> Result<DesktopItem> {
     if db::desktops::get(&core.db, &input.desktop_id)?.is_none() {
-        return Err(CoreError::NotFound(format!("desktop `{}`", input.desktop_id)));
+        return Err(CoreError::NotFound(format!(
+            "desktop `{}`",
+            input.desktop_id
+        )));
     }
     let item = db::desktops::add_item(&core.db, &input)?;
     emit_changed(core, "item_added");
@@ -141,8 +148,8 @@ pub fn delete_folder(core: &Core, id: &str) -> Result<()> {
 ///   exist and be skinned before it can be browsed, which is why this returns Ok rather than an
 ///   error the UI would have to special-case.
 pub fn folder_contents(core: &Core, id: &str) -> Result<Vec<LibraryItem>> {
-    let folder =
-        db::folders::get(&core.db, id)?.ok_or_else(|| CoreError::NotFound(format!("folder `{id}`")))?;
+    let folder = db::folders::get(&core.db, id)?
+        .ok_or_else(|| CoreError::NotFound(format!("folder `{id}`")))?;
 
     match folder.kind {
         FolderKind::Smart => {
@@ -218,25 +225,38 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
         (
             SEEDED_GAMES,
             "Games",
-            EntryFilter { entry_type: Some(EntryType::Game), ..Default::default() },
+            EntryFilter {
+                entry_type: Some(EntryType::Game),
+                ..Default::default()
+            },
             "games",
         ),
         (
             SEEDED_APPS,
             "Apps",
-            EntryFilter { entry_type: Some(EntryType::App), ..Default::default() },
+            EntryFilter {
+                entry_type: Some(EntryType::App),
+                ..Default::default()
+            },
             "apps",
         ),
         (
             SEEDED_FAVOURITES,
             "Favourites",
-            EntryFilter { favourites_only: true, ..Default::default() },
+            EntryFilter {
+                favourites_only: true,
+                ..Default::default()
+            },
             "star",
         ),
         (
             SEEDED_RECENT,
             "Recently played",
-            EntryFilter { sort: SortKey::LastPlayed, limit: Some(24), ..Default::default() },
+            EntryFilter {
+                sort: SortKey::LastPlayed,
+                limit: Some(24),
+                ..Default::default()
+            },
             "play",
         ),
     ];
@@ -309,7 +329,11 @@ fn seed_taskbar(core: &Core) -> Result<()> {
     // Three most-played, so the bar is not empty on a library that has been used.
     let most_played = crate::library::list(
         core,
-        &EntryFilter { sort: SortKey::Playtime, limit: Some(3), ..Default::default() },
+        &EntryFilter {
+            sort: SortKey::Playtime,
+            limit: Some(3),
+            ..Default::default()
+        },
     )?;
     for item in most_played.iter().filter(|i| i.stats.playtime_secs > 0) {
         db::taskbar::pin(&core.db, &item.entry.id)?;
@@ -340,7 +364,9 @@ mod tests {
             entry_type: EntryType::Game,
             source: Source::Steam,
             source_id: Some(id.into()),
-            launch: LaunchSpec::Uri { uri: format!("steam://rungameid/{id}") },
+            launch: LaunchSpec::Uri {
+                uri: format!("steam://rungameid/{id}"),
+            },
             install_path: None,
             install_size: None,
             created_at: 1,
@@ -357,11 +383,16 @@ mod tests {
         let (_tmp, core, _sink) = test_core();
         add_game(&core, "g1", "Portal 2", 0);
 
-        let desktop = seed_if_empty(&core).unwrap().expect("a first run must seed");
+        let desktop = seed_if_empty(&core)
+            .unwrap()
+            .expect("a first run must seed");
         let items = list_items(&core, &desktop.id).unwrap();
         assert_eq!(items.len(), 4, "games, apps, favourites, recently played");
         assert!(items.iter().all(|i| i.kind == DesktopItemKind::Folder));
-        assert!(items.iter().all(|i| i.x == 0), "seeded down the first column");
+        assert!(
+            items.iter().all(|i| i.x == 0),
+            "seeded down the first column"
+        );
 
         let labels: Vec<String> = list_folders(&core)
             .unwrap()
@@ -369,7 +400,10 @@ mod tests {
             .filter_map(|f| f.label)
             .collect();
         for expected in ["Games", "Apps", "Favourites", "Recently played"] {
-            assert!(labels.contains(&expected.to_string()), "missing `{expected}`");
+            assert!(
+                labels.contains(&expected.to_string()),
+                "missing `{expected}`"
+            );
         }
 
         // Idempotent: starting again must not double everything up.
@@ -392,7 +426,9 @@ mod tests {
 
         let contents = folder_contents(&core, &games.id).unwrap();
         assert_eq!(contents.len(), 2);
-        assert!(contents.iter().all(|i| i.entry.entry_type == EntryType::Game));
+        assert!(contents
+            .iter()
+            .all(|i| i.entry.entry_type == EntryType::Game));
     }
 
     #[test]
@@ -406,9 +442,16 @@ mod tests {
         assert!(bar.iter().any(|i| i.kind == TaskbarItemKind::Launcher));
         assert!(bar.iter().any(|i| i.kind == TaskbarItemKind::SystemArea));
 
-        let pinned: Vec<Option<String>> =
-            bar.iter().filter(|i| i.kind == TaskbarItemKind::Pinned).map(|i| i.target_id.clone()).collect();
-        assert_eq!(pinned, vec![Some("g1".to_string())], "only titles with playtime are pinned");
+        let pinned: Vec<Option<String>> = bar
+            .iter()
+            .filter(|i| i.kind == TaskbarItemKind::Pinned)
+            .map(|i| i.target_id.clone())
+            .collect();
+        assert_eq!(
+            pinned,
+            vec![Some("g1".to_string())],
+            "only titles with playtime are pinned"
+        );
     }
 
     #[test]
@@ -420,19 +463,31 @@ mod tests {
         assert_eq!(list_items(&core, &desktop.id).unwrap().len(), 4);
         delete_folder(&core, &folder.id).unwrap();
         let left = list_items(&core, &desktop.id).unwrap();
-        assert_eq!(left.len(), 3, "the orphaned item is pruned, not left opening nothing");
-        assert!(left.iter().all(|i| i.target_id.as_deref() != Some(folder.id.as_str())));
+        assert_eq!(
+            left.len(),
+            3,
+            "the orphaned item is pruned, not left opening nothing"
+        );
+        assert!(left
+            .iter()
+            .all(|i| i.target_id.as_deref() != Some(folder.id.as_str())));
     }
 
     #[test]
     fn the_last_desktop_cannot_be_deleted() {
         let (_tmp, core, _sink) = test_core();
         let first = seed_if_empty(&core).unwrap().unwrap();
-        assert!(matches!(delete_desktop(&core, &first.id), Err(CoreError::Invalid(_))));
+        assert!(matches!(
+            delete_desktop(&core, &first.id),
+            Err(CoreError::Invalid(_))
+        ));
 
         let second = create_desktop(&core, "Work").unwrap();
         delete_desktop(&core, &second.id).unwrap();
-        assert!(matches!(delete_desktop(&core, &first.id), Err(CoreError::Invalid(_))));
+        assert!(matches!(
+            delete_desktop(&core, &first.id),
+            Err(CoreError::Invalid(_))
+        ));
     }
 
     #[test]
@@ -442,14 +497,23 @@ mod tests {
         sink.take();
 
         let item = list_items(&core, &desktop.id).unwrap().remove(0);
-        let moved =
-            update_item(&core, &item.id, DesktopItemPatch { x: Some(4), y: Some(2), ..Default::default() })
-                .unwrap();
+        let moved = update_item(
+            &core,
+            &item.id,
+            DesktopItemPatch {
+                x: Some(4),
+                y: Some(2),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!((moved.x, moved.y), (4, 2));
 
         let events = sink.take();
         assert!(
-            events.iter().any(|e| matches!(e, CoreEvent::DesktopUpdated(_))),
+            events
+                .iter()
+                .any(|e| matches!(e, CoreEvent::DesktopUpdated(_))),
             "the UI needs to hear about it"
         );
 

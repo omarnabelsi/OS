@@ -53,9 +53,10 @@ pub fn remember_fullscreen(fullscreen: bool) {
 /// is mapped.
 fn windowed_size(win: &WebviewWindow, monitor_index: Option<u32>) -> LogicalSize<f64> {
     let explicit = match monitor_index {
-        Some(idx) => {
-            win.available_monitors().ok().and_then(|all| all.into_iter().nth(idx as usize))
-        }
+        Some(idx) => win
+            .available_monitors()
+            .ok()
+            .and_then(|all| all.into_iter().nth(idx as usize)),
         None => None,
     };
     let monitor = explicit
@@ -80,8 +81,14 @@ fn windowed_size(win: &WebviewWindow, monitor_index: Option<u32>) -> LogicalSize
 
 /// Apply settings + CLI overrides. The window stays hidden until `reveal` (called by the UI via
 /// `shell_ready`) so the user never sees an unstyled frame.
-pub fn configure_main_window(app: &AppHandle, settings: &Settings, args: &Args) -> tauri::Result<()> {
-    let Some(win) = main_window(app) else { return Ok(()) };
+pub fn configure_main_window(
+    app: &AppHandle,
+    settings: &Settings,
+    args: &Args,
+) -> tauri::Result<()> {
+    let Some(win) = main_window(app) else {
+        return Ok(());
+    };
     let fullscreen = wants_fullscreen(settings, args);
     WAS_FULLSCREEN.store(fullscreen, Ordering::SeqCst);
 

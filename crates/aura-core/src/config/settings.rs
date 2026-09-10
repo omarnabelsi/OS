@@ -176,10 +176,14 @@ impl Settings {
     /// Unknown keys are rejected so typos in the UI surface immediately.
     pub fn apply_patch(&mut self, patch: serde_json::Value) -> Result<()> {
         let serde_json::Value::Object(patch) = patch else {
-            return Err(CoreError::Invalid("settings patch must be an object".into()));
+            return Err(CoreError::Invalid(
+                "settings patch must be an object".into(),
+            ));
         };
         let mut current = serde_json::to_value(&*self)?;
-        let serde_json::Value::Object(ref mut map) = current else { unreachable!() };
+        let serde_json::Value::Object(ref mut map) = current else {
+            unreachable!()
+        };
         for (k, v) in patch {
             if !map.contains_key(&k) {
                 return Err(CoreError::Invalid(format!("unknown setting `{k}`")));
@@ -194,19 +198,27 @@ impl Settings {
 
     pub fn validate(&self) -> Result<()> {
         if !(0.5..=2.0).contains(&self.ui_scale) {
-            return Err(CoreError::Invalid("uiScale must be between 0.5 and 2.0".into()));
+            return Err(CoreError::Invalid(
+                "uiScale must be between 0.5 and 2.0".into(),
+            ));
         }
         if !(0.0..=1.0).contains(&self.sound_volume) {
-            return Err(CoreError::Invalid("soundVolume must be between 0 and 1".into()));
+            return Err(CoreError::Invalid(
+                "soundVolume must be between 0 and 1".into(),
+            ));
         }
         if let Some(hex) = &self.accent_color {
             if !is_hex_color(hex) {
-                return Err(CoreError::Invalid(format!("accentColor `{hex}` is not a hex colour")));
+                return Err(CoreError::Invalid(format!(
+                    "accentColor `{hex}` is not a hex colour"
+                )));
             }
         }
         if let WallpaperSetting::Color { hex } = &self.wallpaper {
             if !is_hex_color(hex) {
-                return Err(CoreError::Invalid(format!("wallpaper colour `{hex}` is not a hex colour")));
+                return Err(CoreError::Invalid(format!(
+                    "wallpaper colour `{hex}` is not a hex colour"
+                )));
             }
         }
         if self.theme_id.trim().is_empty() {
@@ -260,10 +272,13 @@ mod tests {
     #[test]
     fn patch_merges_and_validates() {
         let mut s = Settings::default();
-        s.apply_patch(serde_json::json!({ "uiScale": 1.25, "tileSize": "large" })).unwrap();
+        s.apply_patch(serde_json::json!({ "uiScale": 1.25, "tileSize": "large" }))
+            .unwrap();
         assert_eq!(s.ui_scale, 1.25);
         assert_eq!(s.tile_size, TileSize::Large);
-        assert!(s.apply_patch(serde_json::json!({ "uiScale": 9.0 })).is_err());
+        assert!(s
+            .apply_patch(serde_json::json!({ "uiScale": 9.0 }))
+            .is_err());
         assert!(s.apply_patch(serde_json::json!({ "nope": 1 })).is_err());
         assert_eq!(s.ui_scale, 1.25, "failed patch must not partially apply");
     }
@@ -291,10 +306,14 @@ mod tests {
             "Meta+L",
             "Alt+Tab",
         ] {
-            assert!(is_reserved_hotkey(spelling), "`{spelling}` must be recognised as reserved");
+            assert!(
+                is_reserved_hotkey(spelling),
+                "`{spelling}` must be recognised as reserved"
+            );
             let mut s = Settings::default();
             assert!(
-                s.apply_patch(serde_json::json!({ "exitHotkey": spelling })).is_err(),
+                s.apply_patch(serde_json::json!({ "exitHotkey": spelling }))
+                    .is_err(),
                 "`{spelling}` must not be storable"
             );
         }
@@ -306,31 +325,51 @@ mod tests {
         let stored = serde_json::json!({ "exitHotkey": "Ctrl+Shift+Escape" });
         let mut loaded: Settings =
             serde_json::from_value(stored).expect("an old document must still load");
-        assert_eq!(loaded.exit_hotkey, "Ctrl+Shift+Escape", "loading does not validate");
+        assert_eq!(
+            loaded.exit_hotkey, "Ctrl+Shift+Escape",
+            "loading does not validate"
+        );
 
-        assert!(repair_exit_hotkey(&mut loaded), "a reserved hotkey must be reported as changed");
+        assert!(
+            repair_exit_hotkey(&mut loaded),
+            "a reserved hotkey must be reported as changed"
+        );
         assert_eq!(loaded.exit_hotkey, DEFAULT_EXIT_HOTKEY);
-        loaded.validate().expect("the repaired document must be valid");
+        loaded
+            .validate()
+            .expect("the repaired document must be valid");
 
         // A hotkey the user deliberately chose is left alone.
-        let mut fine = Settings { exit_hotkey: "Ctrl+Shift+F12".into(), ..Default::default() };
+        let mut fine = Settings {
+            exit_hotkey: "Ctrl+Shift+F12".into(),
+            ..Default::default()
+        };
         assert!(!repair_exit_hotkey(&mut fine));
         assert_eq!(fine.exit_hotkey, "Ctrl+Shift+F12");
     }
 
     #[test]
     fn ordinary_combinations_are_allowed() {
-        for ok in ["Ctrl+Alt+Q", "Ctrl+Shift+Q", "Alt+F4", "Ctrl+Alt+Backspace", "Ctrl+Shift+F12"] {
+        for ok in [
+            "Ctrl+Alt+Q",
+            "Ctrl+Shift+Q",
+            "Alt+F4",
+            "Ctrl+Alt+Backspace",
+            "Ctrl+Shift+F12",
+        ] {
             assert!(!is_reserved_hotkey(ok), "`{ok}` should be allowed");
             let mut s = Settings::default();
-            s.apply_patch(serde_json::json!({ "exitHotkey": ok })).expect("should store");
+            s.apply_patch(serde_json::json!({ "exitHotkey": ok }))
+                .expect("should store");
             assert_eq!(s.exit_hotkey, ok);
         }
     }
 
     #[test]
     fn wallpaper_is_tagged() {
-        let w = WallpaperSetting::Video { path: "c:/x.mp4".into() };
+        let w = WallpaperSetting::Video {
+            path: "c:/x.mp4".into(),
+        };
         let v = serde_json::to_value(&w).unwrap();
         assert_eq!(v["kind"], "video");
         let parsed: WallpaperSetting =
@@ -346,11 +385,19 @@ mod tests {
         // ignored, not honoured.
         let stored = serde_json::json!({ "kind": "video", "path": "c:/x.mp4", "muted": false });
         let parsed: WallpaperSetting = serde_json::from_value(stored).unwrap();
-        assert_eq!(parsed, WallpaperSetting::Video { path: "c:/x.mp4".into() });
+        assert_eq!(
+            parsed,
+            WallpaperSetting::Video {
+                path: "c:/x.mp4".into()
+            }
+        );
 
         // And it must not come back on the way out, so nothing downstream can read it either.
         let out = serde_json::to_value(&parsed).unwrap();
-        assert!(out.get("muted").is_none(), "serialised wallpaper must not mention audio");
+        assert!(
+            out.get("muted").is_none(),
+            "serialised wallpaper must not mention audio"
+        );
     }
 
     /// `musicVolume` is gone with it. An old settings row keeps loading; a live patch does not.
@@ -366,7 +413,8 @@ mod tests {
 
         let mut s = Settings::default();
         assert!(
-            s.apply_patch(serde_json::json!({ "musicVolume": 0.9 })).is_err(),
+            s.apply_patch(serde_json::json!({ "musicVolume": 0.9 }))
+                .is_err(),
             "the UI must not be able to set a music level that does nothing"
         );
     }

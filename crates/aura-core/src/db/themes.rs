@@ -58,7 +58,13 @@ pub fn upsert(db: &Db, row: &ThemeRow) -> Result<()> {
            version         = excluded.version,
            enabled         = excluded.enabled,
            token_overrides = excluded.token_overrides",
-        params![row.id, row.version, row.enabled as i64, overrides, row.installed_at],
+        params![
+            row.id,
+            row.version,
+            row.enabled as i64,
+            overrides,
+            row.installed_at
+        ],
     )?;
     Ok(())
 }
@@ -78,7 +84,10 @@ pub fn set_token_overrides(db: &Db, id: &str, overrides: Option<&serde_json::Val
         None => None,
     };
     let conn = db.conn();
-    conn.execute("UPDATE themes SET token_overrides = ?2 WHERE id = ?1", params![id, raw])?;
+    conn.execute(
+        "UPDATE themes SET token_overrides = ?2 WHERE id = ?1",
+        params![id, raw],
+    )?;
     Ok(())
 }
 
@@ -112,15 +121,30 @@ mod tests {
         assert_eq!(all[0].id, "aura-default");
 
         set_enabled(&db, "neon", false).unwrap();
-        assert!(!list(&db).unwrap().iter().find(|r| r.id == "neon").unwrap().enabled);
+        assert!(
+            !list(&db)
+                .unwrap()
+                .iter()
+                .find(|r| r.id == "neon")
+                .unwrap()
+                .enabled
+        );
 
         let overrides = serde_json::json!({ "color": { "accent": "#ff0000" } });
         set_token_overrides(&db, "neon", Some(&overrides)).unwrap();
-        let neon = list(&db).unwrap().into_iter().find(|r| r.id == "neon").unwrap();
+        let neon = list(&db)
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == "neon")
+            .unwrap();
         assert_eq!(neon.token_overrides, Some(overrides));
 
         set_token_overrides(&db, "neon", None).unwrap();
-        let neon = list(&db).unwrap().into_iter().find(|r| r.id == "neon").unwrap();
+        let neon = list(&db)
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == "neon")
+            .unwrap();
         assert_eq!(neon.token_overrides, None);
     }
 
@@ -128,7 +152,14 @@ mod tests {
     fn upsert_replaces_version() {
         let db = db();
         upsert(&db, &row("a")).unwrap();
-        upsert(&db, &ThemeRow { version: "2.0.0".into(), ..row("a") }).unwrap();
+        upsert(
+            &db,
+            &ThemeRow {
+                version: "2.0.0".into(),
+                ..row("a")
+            },
+        )
+        .unwrap();
         let all = list(&db).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].version, "2.0.0");

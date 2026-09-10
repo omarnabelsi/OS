@@ -146,8 +146,12 @@ pub enum ArtworkKind {
 }
 
 impl ArtworkKind {
-    pub const ALL: [ArtworkKind; 4] =
-        [ArtworkKind::Grid, ArtworkKind::Hero, ArtworkKind::Logo, ArtworkKind::Icon];
+    pub const ALL: [ArtworkKind; 4] = [
+        ArtworkKind::Grid,
+        ArtworkKind::Hero,
+        ArtworkKind::Logo,
+        ArtworkKind::Icon,
+    ];
     pub fn as_str(&self) -> &'static str {
         match self {
             ArtworkKind::Grid => "grid",
@@ -300,7 +304,12 @@ pub struct GridSettings {
 
 impl Default for GridSettings {
     fn default() -> Self {
-        GridSettings { cell: 96, gap: 16, snap: true, auto_arrange: false }
+        GridSettings {
+            cell: 96,
+            gap: 16,
+            snap: true,
+            auto_arrange: false,
+        }
     }
 }
 
@@ -509,22 +518,46 @@ pub struct NewFolder {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FolderPatch {
-    #[serde(deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub label: Option<Option<String>>,
-    #[serde(deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub color: Option<Option<String>>,
-    #[serde(deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub icon: Option<Option<String>>,
-    #[serde(deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub cover: Option<Option<String>>,
-    #[serde(deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub shape: Option<Option<String>>,
     pub layout: Option<FolderLayout>,
-    #[serde(deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub filter: Option<Option<EntryFilter>>,
-    #[serde(deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub collection_id: Option<Option<String>>,
-    #[serde(deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub window_state: Option<Option<FolderWindowState>>,
     pub sort_order: Option<i64>,
 }

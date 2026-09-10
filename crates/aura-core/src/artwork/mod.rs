@@ -45,21 +45,23 @@ pub fn start_fetch_many(core: Arc<Core>, entry_ids: Vec<String>, force: bool) {
     if entry_ids.is_empty() {
         return;
     }
-    let spawned = std::thread::Builder::new().name("aura-artwork".into()).spawn(move || {
-        for id in entry_ids {
-            let entry = match db::entries::get(&core.db, &id) {
-                Ok(Some(e)) => e,
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::warn!("artwork: cannot load entry {id}: {e}");
-                    continue;
+    let spawned = std::thread::Builder::new()
+        .name("aura-artwork".into())
+        .spawn(move || {
+            for id in entry_ids {
+                let entry = match db::entries::get(&core.db, &id) {
+                    Ok(Some(e)) => e,
+                    Ok(None) => continue,
+                    Err(e) => {
+                        tracing::warn!("artwork: cannot load entry {id}: {e}");
+                        continue;
+                    }
+                };
+                if let Err(e) = fetch_for_entry(&core, &entry, force) {
+                    tracing::warn!("artwork: fetch failed for {}: {e}", entry.name);
                 }
-            };
-            if let Err(e) = fetch_for_entry(&core, &entry, force) {
-                tracing::warn!("artwork: fetch failed for {}: {e}", entry.name);
             }
-        }
-    });
+        });
     if let Err(e) = spawned {
         tracing::error!("cannot spawn the artwork thread: {e}");
     }
@@ -114,7 +116,10 @@ fn candidate_urls(
     if let (Some(client), Some(game_id)) = (client, sgdb_game_id) {
         match client.images(game_id, kind) {
             Ok(images) => out.extend(
-                images.into_iter().take(SGDB_CANDIDATES).map(|i| (i.url, "steamgriddb")),
+                images
+                    .into_iter()
+                    .take(SGDB_CANDIDATES)
+                    .map(|i| (i.url, "steamgriddb")),
             ),
             Err(e) => tracing::debug!("steamgriddb images({game_id}, {kind:?}) failed: {e}"),
         }
@@ -123,7 +128,11 @@ fn candidate_urls(
 
     if entry.source == Source::Steam {
         if let Some(appid) = &entry.source_id {
-            out.extend(steam_cdn::candidates(appid, kind).into_iter().map(|u| (u, "steam_cdn")));
+            out.extend(
+                steam_cdn::candidates(appid, kind)
+                    .into_iter()
+                    .map(|u| (u, "steam_cdn")),
+            );
         }
     }
 
@@ -170,7 +179,9 @@ fn fetch_local_icon(core: &Core, entry: &Entry, current: &mut Artwork, force: bo
         return 0;
     }
 
-    let Some(source) = local_icon_path(entry) else { return 0 };
+    let Some(source) = local_icon_path(entry) else {
+        return 0;
+    };
     if !source.is_file() {
         return 0;
     }
@@ -185,7 +196,11 @@ fn fetch_local_icon(core: &Core, entry: &Entry, current: &mut Artwork, force: bo
 
     let mut saved = 0usize;
     for kind in wanted {
-        let bytes = if kind == ArtworkKind::Grid { &grid_png } else { &icon_png };
+        let bytes = if kind == ArtworkKind::Grid {
+            &grid_png
+        } else {
+            &icon_png
+        };
         let key = icon_cache_key(&source, kind);
         let dest = cache::cache_path(&core.paths.artwork_dir, &entry.id, kind, &key);
         if let Err(e) = cache::write_atomic(&dest, bytes) {
@@ -220,7 +235,9 @@ pub fn fetch_for_entry(core: &Core, entry: &Entry, force: bool) -> Result<Artwor
     }
 
     let key = api_key(core);
-    let client = key.as_deref().map(|k| steamgriddb::SgdbClient::new(&core.http, k));
+    let client = key
+        .as_deref()
+        .map(|k| steamgriddb::SgdbClient::new(&core.http, k));
     let sgdb_game_id = client.as_ref().and_then(|c| resolve_sgdb_game(c, entry));
 
     let mut saved = 0usize;
@@ -336,7 +353,9 @@ mod tests {
             entry_type: EntryType::Game,
             source: Source::Steam,
             source_id: Some("620".into()),
-            launch: LaunchSpec::Uri { uri: "steam://rungameid/620".into() },
+            launch: LaunchSpec::Uri {
+                uri: "steam://rungameid/620".into(),
+            },
             install_path: None,
             install_size: None,
             created_at: 1,
@@ -354,13 +373,21 @@ mod tests {
         let picked = tmp.path().join("my art.png");
         std::fs::write(&picked, b"\x89PNG fake").unwrap();
 
-        let art = set_override(&core, "e1", ArtworkKind::Grid, &picked.display().to_string())
-            .unwrap();
+        let art = set_override(
+            &core,
+            "e1",
+            ArtworkKind::Grid,
+            &picked.display().to_string(),
+        )
+        .unwrap();
 
         assert!(art.user_override);
         assert_eq!(art.source.as_deref(), Some("user"));
         let stored = art.grid.expect("grid path");
-        assert!(std::path::Path::new(&stored).is_file(), "the file must be copied into the cache");
+        assert!(
+            std::path::Path::new(&stored).is_file(),
+            "the file must be copied into the cache"
+        );
         assert!(stored.starts_with(&core.paths.artwork_dir.display().to_string()));
         assert_eq!(std::fs::read(&stored).unwrap(), b"\x89PNG fake");
 
@@ -381,12 +408,22 @@ mod tests {
             Err(CoreError::NotFound(_))
         ));
         assert!(matches!(
-            set_override(&core, "e1", ArtworkKind::Grid, &tmp.path().join("nope.png").display().to_string()),
+            set_override(
+                &core,
+                "e1",
+                ArtworkKind::Grid,
+                &tmp.path().join("nope.png").display().to_string()
+            ),
             Err(CoreError::NotFound(_))
         ));
         // A directory is not a file.
         assert!(matches!(
-            set_override(&core, "e1", ArtworkKind::Grid, &tmp.path().display().to_string()),
+            set_override(
+                &core,
+                "e1",
+                ArtworkKind::Grid,
+                &tmp.path().display().to_string()
+            ),
             Err(CoreError::NotFound(_))
         ));
     }
@@ -397,7 +434,13 @@ mod tests {
         let entry = add_entry(&core, "e1");
         let picked = tmp.path().join("art.png");
         std::fs::write(&picked, b"png").unwrap();
-        set_override(&core, "e1", ArtworkKind::Grid, &picked.display().to_string()).unwrap();
+        set_override(
+            &core,
+            "e1",
+            ArtworkKind::Grid,
+            &picked.display().to_string(),
+        )
+        .unwrap();
         sink.take();
 
         // No network is touched: the override short-circuits before any HTTP call.
@@ -409,13 +452,23 @@ mod tests {
     #[test]
     fn api_key_prefers_settings_then_environment() {
         let (_tmp, core, _sink) = test_core();
-        assert_eq!(api_key(&core), std::env::var(API_KEY_ENV).ok(), "no setting -> env or none");
+        assert_eq!(
+            api_key(&core),
+            std::env::var(API_KEY_ENV).ok(),
+            "no setting -> env or none"
+        );
 
-        core.update_settings(serde_json::json!({ "steamgriddbApiKey": "abc123" })).unwrap();
+        core.update_settings(serde_json::json!({ "steamgriddbApiKey": "abc123" }))
+            .unwrap();
         assert_eq!(api_key(&core).as_deref(), Some("abc123"));
 
-        core.update_settings(serde_json::json!({ "steamgriddbApiKey": "   " })).unwrap();
-        assert_eq!(api_key(&core), std::env::var(API_KEY_ENV).ok(), "blank is treated as unset");
+        core.update_settings(serde_json::json!({ "steamgriddbApiKey": "   " }))
+            .unwrap();
+        assert_eq!(
+            api_key(&core),
+            std::env::var(API_KEY_ENV).ok(),
+            "blank is treated as unset"
+        );
     }
 
     #[test]
@@ -450,11 +503,19 @@ mod tests {
             args: vec![],
             cwd: None,
         };
-        assert_eq!(local_icon_path(&entry), Some(PathBuf::from(r"C:\Programs\Thing\thing.exe")));
+        assert_eq!(
+            local_icon_path(&entry),
+            Some(PathBuf::from(r"C:\Programs\Thing\thing.exe"))
+        );
 
         // A shortcut is a file; `exe_icon` follows it to its target.
-        entry.launch = LaunchSpec::Shell { target: r"C:\Users\x\Discord.lnk".into() };
-        assert_eq!(local_icon_path(&entry), Some(PathBuf::from(r"C:\Users\x\Discord.lnk")));
+        entry.launch = LaunchSpec::Shell {
+            target: r"C:\Users\x\Discord.lnk".into(),
+        };
+        assert_eq!(
+            local_icon_path(&entry),
+            Some(PathBuf::from(r"C:\Users\x\Discord.lnk"))
+        );
     }
 
     #[test]
@@ -463,14 +524,24 @@ mod tests {
         let grid = icon_cache_key(exe, ArtworkKind::Grid);
         let icon = icon_cache_key(exe, ArtworkKind::Icon);
         assert_ne!(grid, icon, "the two assets are different images");
-        assert_eq!(grid, icon_cache_key(exe, ArtworkKind::Grid), "same input, same key");
-        assert_ne!(grid, icon_cache_key(Path::new(r"C:\other.exe"), ArtworkKind::Grid));
+        assert_eq!(
+            grid,
+            icon_cache_key(exe, ArtworkKind::Grid),
+            "same input, same key"
+        );
+        assert_ne!(
+            grid,
+            icon_cache_key(Path::new(r"C:\other.exe"), ArtworkKind::Grid)
+        );
 
         // The key is what decides the cache file's extension.
         let dir = Path::new("C:/cache/artwork");
         let path = cache::cache_path(dir, "e1", ArtworkKind::Grid, &grid);
         let name = path.file_name().unwrap().to_str().unwrap();
-        assert!(name.starts_with("grid-") && name.ends_with(".png"), "got {name}");
+        assert!(
+            name.starts_with("grid-") && name.ends_with(".png"),
+            "got {name}"
+        );
     }
 
     #[test]
@@ -497,7 +568,10 @@ mod tests {
 
         let mut artwork = Artwork::default();
         assert_eq!(fetch_local_icon(&core, &entry, &mut artwork, false), 0);
-        assert!(sink.take().is_empty(), "a missing file is not worth an event");
+        assert!(
+            sink.take().is_empty(),
+            "a missing file is not worth an event"
+        );
     }
 
     #[test]
@@ -506,7 +580,11 @@ mod tests {
         let mut entry = add_entry(&core, "e1");
         entry.source = Source::Manual;
         entry.source_id = None;
-        entry.launch = LaunchSpec::Exe { path: "irrelevant".into(), args: vec![], cwd: None };
+        entry.launch = LaunchSpec::Exe {
+            path: "irrelevant".into(),
+            args: vec![],
+            cwd: None,
+        };
 
         // Both slots already filled: the step must not even look at the file.
         let mut artwork = Artwork {
@@ -533,19 +611,32 @@ mod tests {
         let mut entry = add_entry(&core, "e1");
         entry.source = Source::Manual;
         entry.source_id = None;
-        entry.launch =
-            LaunchSpec::Exe { path: exe.display().to_string(), args: vec![], cwd: None };
+        entry.launch = LaunchSpec::Exe {
+            path: exe.display().to_string(),
+            args: vec![],
+            cwd: None,
+        };
 
         let mut artwork = Artwork::default();
-        assert_eq!(fetch_local_icon(&core, &entry, &mut artwork, false), 2, "icon and grid");
+        assert_eq!(
+            fetch_local_icon(&core, &entry, &mut artwork, false),
+            2,
+            "icon and grid"
+        );
 
         for path in [artwork.icon.as_deref(), artwork.grid.as_deref()] {
             let path = path.expect("both assets must be recorded");
-            assert!(std::path::Path::new(path).is_file(), "{path} must exist on disk");
+            assert!(
+                std::path::Path::new(path).is_file(),
+                "{path} must exist on disk"
+            );
             assert!(path.ends_with(".png"));
         }
         assert_eq!(artwork.source.as_deref(), Some("exe_icon"));
-        assert!(!artwork.user_override, "an extracted icon is not a user override");
+        assert!(
+            !artwork.user_override,
+            "an extracted icon is not a user override"
+        );
 
         let kinds: Vec<ArtworkKind> = sink
             .take()

@@ -70,7 +70,10 @@ pub fn set_kind(
     let column = kind.as_str();
     {
         let conn = db.conn();
-        conn.execute("INSERT OR IGNORE INTO artwork (entry_id) VALUES (?1)", params![entry_id])?;
+        conn.execute(
+            "INSERT OR IGNORE INTO artwork (entry_id) VALUES (?1)",
+            params![entry_id],
+        )?;
         // `column` is one of four hard-coded identifiers, never user input.
         let sql = format!(
             "UPDATE artwork SET
@@ -82,7 +85,13 @@ pub fn set_kind(
         );
         conn.execute(
             &sql,
-            params![entry_id, path, source, user_override as i64, crate::now_secs()],
+            params![
+                entry_id,
+                path,
+                source,
+                user_override as i64,
+                crate::now_secs()
+            ],
         )?;
     }
     get(db, entry_id)
@@ -120,7 +129,9 @@ mod tests {
             entry_type: EntryType::Game,
             source: Source::Steam,
             source_id: Some(id.into()),
-            launch: LaunchSpec::Uri { uri: "steam://rungameid/1".into() },
+            launch: LaunchSpec::Uri {
+                uri: "steam://rungameid/1".into(),
+            },
             install_path: None,
             install_size: None,
             created_at: 1,
@@ -140,7 +151,15 @@ mod tests {
     #[test]
     fn set_kind_updates_one_asset() {
         let db = db_with_entry("a");
-        let art = set_kind(&db, "a", ArtworkKind::Grid, Some("C:/g.jpg"), "steam_cdn", false).unwrap();
+        let art = set_kind(
+            &db,
+            "a",
+            ArtworkKind::Grid,
+            Some("C:/g.jpg"),
+            "steam_cdn",
+            false,
+        )
+        .unwrap();
         assert_eq!(art.grid.as_deref(), Some("C:/g.jpg"));
         assert_eq!(art.source.as_deref(), Some("steam_cdn"));
         assert!(!art.user_override);
@@ -151,7 +170,15 @@ mod tests {
         assert!(art.is_complete());
 
         // A later scanner write must not clear the user_override flag.
-        let art = set_kind(&db, "a", ArtworkKind::Logo, Some("C:/l.png"), "steam_cdn", false).unwrap();
+        let art = set_kind(
+            &db,
+            "a",
+            ArtworkKind::Logo,
+            Some("C:/l.png"),
+            "steam_cdn",
+            false,
+        )
+        .unwrap();
         assert!(art.user_override, "user_override must be sticky");
     }
 
@@ -176,13 +203,26 @@ mod tests {
         assert_eq!(incomplete_entry_ids(&db).unwrap(), vec!["a".to_string()]);
 
         set_kind(&db, "a", ArtworkKind::Grid, Some("g"), "steam_cdn", false).unwrap();
-        assert_eq!(incomplete_entry_ids(&db).unwrap(), vec!["a".to_string()], "hero still missing");
+        assert_eq!(
+            incomplete_entry_ids(&db).unwrap(),
+            vec!["a".to_string()],
+            "hero still missing"
+        );
 
         set_kind(&db, "a", ArtworkKind::Hero, Some("h"), "steam_cdn", false).unwrap();
         assert!(incomplete_entry_ids(&db).unwrap().is_empty());
 
         // user_override rows are never re-fetched, even when incomplete
-        set(&db, "a", &Artwork { user_override: true, ..Default::default() }, None).unwrap();
+        set(
+            &db,
+            "a",
+            &Artwork {
+                user_override: true,
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
         assert!(incomplete_entry_ids(&db).unwrap().is_empty());
     }
 }

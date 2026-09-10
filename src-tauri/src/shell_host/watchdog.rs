@@ -20,7 +20,11 @@ pub fn install_panic_hook(app: &AppHandle) {
         log::error!("{msg}");
         if let Some(state) = handle.try_state::<crate::state::AppState>() {
             let path = state.core.paths.log_dir.join("crash.log");
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
                 let _ = f.write_all(msg.as_bytes());
             }
         }

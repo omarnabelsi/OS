@@ -21,7 +21,10 @@ pub struct Args {
 
 impl Args {
     pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Args {
-        let mut args = Args { smoke_secs: 8, ..Default::default() };
+        let mut args = Args {
+            smoke_secs: 8,
+            ..Default::default()
+        };
         let mut it = argv.into_iter().peekable();
         while let Some(a) = it.next() {
             match a.as_str() {

@@ -39,8 +39,9 @@ fn row_to_item(row: &Row<'_>) -> rusqlite::Result<TaskbarItem> {
 
 pub fn list(db: &Db) -> Result<Vec<TaskbarItem>> {
     let conn = db.conn();
-    let mut stmt = conn
-        .prepare("SELECT id, kind, target_id, sort_order FROM taskbar_items ORDER BY sort_order ASC")?;
+    let mut stmt = conn.prepare(
+        "SELECT id, kind, target_id, sort_order FROM taskbar_items ORDER BY sort_order ASC",
+    )?;
     let rows = stmt.query_map([], row_to_item)?;
     let mut out = Vec::new();
     for r in rows {
@@ -58,7 +59,12 @@ pub fn put(db: &Db, item: &TaskbarItem) -> Result<()> {
            kind       = excluded.kind,
            target_id  = excluded.target_id,
            sort_order = excluded.sort_order",
-        params![item.id, kind_str(item.kind), item.target_id, item.sort_order],
+        params![
+            item.id,
+            kind_str(item.kind),
+            item.target_id,
+            item.sort_order
+        ],
     )?;
     Ok(())
 }
@@ -128,11 +134,17 @@ mod tests {
         let db = db();
         let first = pin(&db, "e1").unwrap();
         let again = pin(&db, "e1").unwrap();
-        assert_eq!(first.id, again.id, "pinning twice must not produce two buttons");
+        assert_eq!(
+            first.id, again.id,
+            "pinning twice must not produce two buttons"
+        );
         assert_eq!(count(&db).unwrap(), 1);
 
         let second = pin(&db, "e2").unwrap();
-        assert!(second.sort_order > first.sort_order, "new pins go on the end");
+        assert!(
+            second.sort_order > first.sort_order,
+            "new pins go on the end"
+        );
 
         assert!(unpin(&db, "e1").unwrap());
         assert!(!unpin(&db, "e1").unwrap());
@@ -169,7 +181,11 @@ mod tests {
         let c = pin(&db, "c").unwrap();
 
         reorder(&db, &[c.id.clone(), a.id.clone(), b.id.clone()]).unwrap();
-        let order: Vec<Option<String>> = list(&db).unwrap().into_iter().map(|i| i.target_id).collect();
+        let order: Vec<Option<String>> = list(&db)
+            .unwrap()
+            .into_iter()
+            .map(|i| i.target_id)
+            .collect();
         assert_eq!(
             order,
             vec![Some("c".into()), Some("a".into()), Some("b".into())]

@@ -2,7 +2,9 @@ use aura_core::MonitorInfo;
 use tauri::{AppHandle, Manager};
 
 pub fn list(app: &AppHandle) -> tauri::Result<Vec<MonitorInfo>> {
-    let Some(win) = app.get_webview_window(super::window::MAIN) else { return Ok(vec![]) };
+    let Some(win) = app.get_webview_window(super::window::MAIN) else {
+        return Ok(vec![]);
+    };
     let primary = win.primary_monitor()?;
     let primary_pos = primary.as_ref().map(|m| *m.position());
     Ok(win

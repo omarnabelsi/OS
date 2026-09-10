@@ -30,11 +30,14 @@ fn absolute(path: &Path) -> String {
 
 pub fn read_manifest(dir: &Path) -> Result<ThemeManifest> {
     let path = dir.join(MANIFEST_FILE);
-    let raw = std::fs::read_to_string(&path).map_err(|e| {
-        CoreError::Theme(format!("cannot read {}: {e}", path.display()))
-    })?;
-    serde_json::from_str(&raw)
-        .map_err(|e| CoreError::Theme(format!("{} is not a valid theme manifest: {e}", path.display())))
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| CoreError::Theme(format!("cannot read {}: {e}", path.display())))?;
+    serde_json::from_str(&raw).map_err(|e| {
+        CoreError::Theme(format!(
+            "{} is not a valid theme manifest: {e}",
+            path.display()
+        ))
+    })
 }
 
 pub fn info_from_manifest(dir: &Path, manifest: &ThemeManifest, builtin: bool) -> ThemeInfo {
@@ -44,7 +47,11 @@ pub fn info_from_manifest(dir: &Path, manifest: &ThemeManifest, builtin: bool) -
         author: manifest.author.clone(),
         version: manifest.version.clone(),
         description: manifest.description.clone(),
-        screenshots: manifest.screenshots.iter().map(|s| absolute(&dir.join(s))).collect(),
+        screenshots: manifest
+            .screenshots
+            .iter()
+            .map(|s| absolute(&dir.join(s)))
+            .collect(),
         path: absolute(dir),
         builtin,
         min_app_version: manifest.min_app_version.clone(),
@@ -89,7 +96,10 @@ pub fn load_from_dir(dir: &Path, builtin: bool) -> Result<ThemeBundle> {
     let mut sounds = HashMap::new();
     for (slot, rel) in &manifest.sounds {
         if !SOUND_SLOTS.contains(&slot.as_str()) {
-            tracing::warn!("theme `{}`: ignoring unknown sound slot `{slot}`", manifest.id);
+            tracing::warn!(
+                "theme `{}`: ignoring unknown sound slot `{slot}`",
+                manifest.id
+            );
             continue;
         }
         sounds.insert(slot.clone(), absolute(&dir.join(rel)));
@@ -174,13 +184,19 @@ mod tests {
         assert_eq!(bundle.tokens["color"]["accent"], "#6ee7ff");
         assert_eq!(bundle.layout["regions"][0], "navBar");
         assert_eq!(bundle.css, ".aura-root{}");
-        assert_eq!(bundle.shaders.get("aurora").map(String::as_str), Some("void main(){}"));
+        assert_eq!(
+            bundle.shaders.get("aurora").map(String::as_str),
+            Some("void main(){}")
+        );
 
         // Sounds are absolute paths; shaders are inlined source.
         let move_sound = bundle.sounds.get("move").expect("move sound");
         assert!(Path::new(move_sound).is_file(), "got {move_sound}");
         assert!(!bundle.assets_dir.is_empty());
-        assert!(!bundle.info.path.contains(r"\\?\"), "verbatim prefix must be stripped");
+        assert!(
+            !bundle.info.path.contains(r"\\?\"),
+            "verbatim prefix must be stripped"
+        );
     }
 
     /// The app plays no music, so a theme must not be able to get an audio file of its own
@@ -208,10 +224,16 @@ mod tests {
         .unwrap();
 
         let bundle = load_from_dir(&dir, true).unwrap();
-        assert!(bundle.sounds.contains_key("move"), "a real slot still loads");
+        assert!(
+            bundle.sounds.contains_key("move"),
+            "a real slot still loads"
+        );
         assert_eq!(bundle.sounds.len(), 1, "only the known slot survives");
         for invented in ["music", "ambience"] {
-            assert!(!bundle.sounds.contains_key(invented), "`{invented}` must not reach the UI");
+            assert!(
+                !bundle.sounds.contains_key(invented),
+                "`{invented}` must not reach the UI"
+            );
         }
     }
 
@@ -221,7 +243,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = write_theme(tmp.path(), "test-theme");
         std::fs::create_dir_all(dir.join("assets").join("folders")).unwrap();
-        std::fs::write(dir.join("assets").join("folders").join("rounded.svg"), "<svg/>").unwrap();
+        std::fs::write(
+            dir.join("assets").join("folders").join("rounded.svg"),
+            "<svg/>",
+        )
+        .unwrap();
         std::fs::write(
             dir.join("layout.json"),
             r#"{
@@ -240,7 +266,11 @@ mod tests {
         let bundle = load_from_dir(&dir, true).unwrap();
         let shapes = bundle.layout["folderShapes"].as_array().unwrap();
         let ids: Vec<&str> = shapes.iter().filter_map(|s| s["id"].as_str()).collect();
-        assert_eq!(ids, vec!["rounded"], "only the safe, existing, well-named shape survives");
+        assert_eq!(
+            ids,
+            vec!["rounded"],
+            "only the safe, existing, well-named shape survives"
+        );
     }
 
     #[test]
@@ -269,7 +299,10 @@ mod tests {
         let dir = tmp.path().join("broken");
         std::fs::create_dir_all(&dir).unwrap();
 
-        assert!(matches!(read_manifest(&dir), Err(CoreError::Theme(_))), "no manifest at all");
+        assert!(
+            matches!(read_manifest(&dir), Err(CoreError::Theme(_))),
+            "no manifest at all"
+        );
 
         std::fs::write(dir.join(MANIFEST_FILE), "{ not json").unwrap();
         assert!(matches!(read_manifest(&dir), Err(CoreError::Theme(_))));
@@ -292,6 +325,9 @@ mod tests {
         let dir = write_theme(tmp.path(), "test-theme");
         // Declare a sound that is not there.
         std::fs::remove_file(dir.join("sounds").join("move.wav")).unwrap();
-        assert!(matches!(load_from_dir(&dir, true), Err(CoreError::Theme(_))));
+        assert!(matches!(
+            load_from_dir(&dir, true),
+            Err(CoreError::Theme(_))
+        ));
     }
 }

@@ -27,7 +27,10 @@ pub struct Vdf {
 impl VdfObject {
     /// First value with this key (case-insensitive, like Steam).
     pub fn get(&self, key: &str) -> Option<&VdfValue> {
-        self.0.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v)
+        self.0
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| v)
     }
     pub fn get_str(&self, key: &str) -> Option<&str> {
         match self.get(key)? {
@@ -119,10 +122,7 @@ fn tokenize(text: &str) -> Result<Vec<Token>> {
 
         // Unquoted token: runs until whitespace or a structural character.
         let start = i;
-        while i < chars.len()
-            && !chars[i].is_whitespace()
-            && !matches!(chars[i], '{' | '}' | '"')
-        {
+        while i < chars.len() && !chars[i].is_whitespace() && !matches!(chars[i], '{' | '}' | '"') {
             i += 1;
         }
         out.push(Token::Str(chars[start..i].iter().collect()));
@@ -160,7 +160,9 @@ fn parse_obj(tokens: &[Token], i: &mut usize, depth: usize) -> Result<VdfObject>
                 return Ok(obj);
             }
             Some(Token::Open) => {
-                return Err(CoreError::Invalid("vdf: `{` where a key was expected".into()))
+                return Err(CoreError::Invalid(
+                    "vdf: `{` where a key was expected".into(),
+                ))
             }
             Some(Token::Str(key)) => {
                 let key = key.clone();
@@ -176,9 +178,7 @@ fn parse_obj(tokens: &[Token], i: &mut usize, depth: usize) -> Result<VdfObject>
                         *i += 1;
                         obj.0.push((key, VdfValue::Str(v)));
                     }
-                    _ => {
-                        return Err(CoreError::Invalid(format!("vdf: key `{key}` has no value")))
-                    }
+                    _ => return Err(CoreError::Invalid(format!("vdf: key `{key}` has no value"))),
                 }
             }
         }
@@ -201,7 +201,11 @@ pub fn parse(text: &str) -> Result<Vdf> {
     };
     match tokens.get(i) {
         Some(Token::Open) => i += 1,
-        _ => return Err(CoreError::Invalid("vdf: expected `{` after the root key".into())),
+        _ => {
+            return Err(CoreError::Invalid(
+                "vdf: expected `{` after the root key".into(),
+            ))
+        }
     }
     let root = parse_obj(&tokens, &mut i, 1)?;
     Ok(Vdf { root_key, root })
@@ -221,7 +225,10 @@ mod tests {
         let zero = vdf.root.get_obj("0").unwrap();
         assert_eq!(zero.get_str("path"), Some("C:\\Program Files (x86)\\Steam"));
         assert_eq!(zero.get_obj("apps").unwrap().get_str("620"), Some("1234"));
-        assert_eq!(vdf.root.get_obj("1").unwrap().get_str("path"), Some("D:\\SteamLibrary"));
+        assert_eq!(
+            vdf.root.get_obj("1").unwrap().get_str("path"),
+            Some("D:\\SteamLibrary")
+        );
         assert_eq!(vdf.root.0.len(), 2);
     }
 
@@ -248,7 +255,11 @@ mod tests {
         // key lookup is case-insensitive, like Steam
         assert_eq!(vdf.root.get_str("stateflags"), Some("4"));
         assert!(vdf.root.get_obj("UserConfig").is_some());
-        assert_eq!(vdf.root.get_str("UserConfig"), None, "an object is not a string");
+        assert_eq!(
+            vdf.root.get_str("UserConfig"),
+            None,
+            "an object is not a string"
+        );
     }
 
     #[test]
@@ -273,7 +284,11 @@ mod tests {
     fn keeps_repeated_keys_in_order() {
         let vdf = parse("\"r\"{\"k\" \"1\" \"k\" \"2\"}").unwrap();
         assert_eq!(vdf.root.0.len(), 2);
-        assert_eq!(vdf.root.get_str("k"), Some("1"), "get returns the first match");
+        assert_eq!(
+            vdf.root.get_str("k"),
+            Some("1"),
+            "get returns the first match"
+        );
     }
 
     #[test]

@@ -23,7 +23,11 @@ pub fn save(db: &Db, settings: &Settings) -> Result<()> {
 pub fn get_raw(db: &Db, key: &str) -> Result<Option<serde_json::Value>> {
     let conn = db.conn();
     let raw: Option<String> = conn
-        .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| r.get(0))
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![key],
+            |r| r.get(0),
+        )
         .optional()?;
     match raw {
         Some(s) => Ok(Some(serde_json::from_str(&s)?)),
@@ -62,7 +66,10 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         db.migrate().unwrap();
         assert!(load(&db).unwrap().is_none());
-        let s = Settings { ui_scale: 1.5, ..Default::default() };
+        let s = Settings {
+            ui_scale: 1.5,
+            ..Default::default()
+        };
         save(&db, &s).unwrap();
         assert_eq!(load(&db).unwrap().unwrap(), s);
         set_raw(&db, "ui.lastScreen", &serde_json::json!("games")).unwrap();

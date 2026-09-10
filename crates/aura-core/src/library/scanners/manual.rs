@@ -21,10 +21,16 @@ pub fn discover(input: &AddManualEntryInput) -> Result<DiscoveredEntry> {
         return Err(CoreError::Invalid("path must not be empty".into()));
     }
     if !path.exists() {
-        return Err(CoreError::NotFound(format!("`{}` does not exist", path.display())));
+        return Err(CoreError::NotFound(format!(
+            "`{}` does not exist",
+            path.display()
+        )));
     }
     if !path.is_file() {
-        return Err(CoreError::Invalid(format!("`{}` is not a file", path.display())));
+        return Err(CoreError::Invalid(format!(
+            "`{}` is not a file",
+            path.display()
+        )));
     }
 
     let ext = path
@@ -37,7 +43,9 @@ pub fn discover(input: &AddManualEntryInput) -> Result<DiscoveredEntry> {
 
     let launch = match ext.as_str() {
         // Let Windows resolve shortcuts and internet links rather than second-guessing them.
-        "lnk" | "url" => LaunchSpec::Shell { target: path.display().to_string() },
+        "lnk" | "url" => LaunchSpec::Shell {
+            target: path.display().to_string(),
+        },
         _ => LaunchSpec::Exe {
             path: path.display().to_string(),
             args: input.args.clone(),
@@ -45,7 +53,10 @@ pub fn discover(input: &AddManualEntryInput) -> Result<DiscoveredEntry> {
         },
     };
 
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled");
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Untitled");
     let name = input
         .name
         .as_deref()
@@ -67,8 +78,16 @@ pub fn discover(input: &AddManualEntryInput) -> Result<DiscoveredEntry> {
 
 /// "elden_ring-x64.exe" -> "Elden Ring". Public for tests.
 pub fn prettify_name(file_stem: &str) -> String {
-    let spaced: String =
-        file_stem.chars().map(|c| if c == '_' || c == '-' || c == '.' { ' ' } else { c }).collect();
+    let spaced: String = file_stem
+        .chars()
+        .map(|c| {
+            if c == '_' || c == '-' || c == '.' {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
 
     let words: Vec<String> = spaced
         .split_whitespace()
@@ -107,14 +126,27 @@ mod tests {
         assert_eq!(prettify_name("hades"), "Hades");
         assert_eq!(prettify_name("Portal 2"), "Portal 2");
         assert_eq!(prettify_name("FTL"), "FTL", "acronyms are left alone");
-        assert_eq!(prettify_name("OpenRCT2"), "OpenRCT2", "CamelCase is left alone");
+        assert_eq!(
+            prettify_name("OpenRCT2"),
+            "OpenRCT2",
+            "CamelCase is left alone"
+        );
         assert_eq!(prettify_name("game-win64-shipping"), "Game");
-        assert_eq!(prettify_name("x64"), "x64", "an all-noise name falls back to the stem");
+        assert_eq!(
+            prettify_name("x64"),
+            "x64",
+            "an all-noise name falls back to the stem"
+        );
         assert_eq!(prettify_name(""), "");
     }
 
     fn input(path: &str) -> AddManualEntryInput {
-        AddManualEntryInput { name: None, path: path.into(), args: vec![], entry_type: None }
+        AddManualEntryInput {
+            name: None,
+            path: path.into(),
+            args: vec![],
+            entry_type: None,
+        }
     }
 
     #[test]
@@ -148,7 +180,9 @@ mod tests {
             let e = discover(&input(&file.display().to_string())).unwrap();
             assert_eq!(
                 e.launch,
-                LaunchSpec::Shell { target: file.display().to_string() },
+                LaunchSpec::Shell {
+                    target: file.display().to_string()
+                },
                 ".{ext} must be launched through the shell"
             );
         }
@@ -187,6 +221,9 @@ mod tests {
             discover(&input(&tmp.path().display().to_string())),
             Err(CoreError::Invalid(_))
         ));
-        assert!(matches!(discover(&input("   ")), Err(CoreError::Invalid(_))));
+        assert!(matches!(
+            discover(&input("   ")),
+            Err(CoreError::Invalid(_))
+        ));
     }
 }

@@ -63,7 +63,10 @@ pub fn get_exit_hotkey_status(state: State<'_, AppState>) -> shell_host::hotkeys
 // ---- library ----------------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn list_entries(state: State<'_, AppState>, filter: Option<EntryFilter>) -> CmdResult<Vec<LibraryItem>> {
+pub fn list_entries(
+    state: State<'_, AppState>,
+    filter: Option<EntryFilter>,
+) -> CmdResult<Vec<LibraryItem>> {
     state.core.list_entries(filter.unwrap_or_default())
 }
 
@@ -73,12 +76,19 @@ pub fn get_entry(state: State<'_, AppState>, id: String) -> CmdResult<Option<Lib
 }
 
 #[tauri::command]
-pub fn add_manual_entry(state: State<'_, AppState>, input: AddManualEntryInput) -> CmdResult<LibraryItem> {
+pub fn add_manual_entry(
+    state: State<'_, AppState>,
+    input: AddManualEntryInput,
+) -> CmdResult<LibraryItem> {
     state.core.add_manual_entry(input)
 }
 
 #[tauri::command]
-pub fn update_entry(state: State<'_, AppState>, id: String, patch: UpdateEntryPatch) -> CmdResult<LibraryItem> {
+pub fn update_entry(
+    state: State<'_, AppState>,
+    id: String,
+    patch: UpdateEntryPatch,
+) -> CmdResult<LibraryItem> {
     state.core.update_entry(&id, patch)
 }
 
@@ -284,7 +294,9 @@ pub fn get_monitors(app: AppHandle) -> CmdResult<Vec<MonitorInfo>> {
 
 #[tauri::command]
 pub fn set_fullscreen(window: WebviewWindow, fullscreen: bool) -> CmdResult<()> {
-    window.set_fullscreen(fullscreen).map_err(|e| CoreError::Other(e.to_string()))?;
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|e| CoreError::Other(e.to_string()))?;
     // So minimise-for-launch and restore-after-launch agree with what the UI just asked for.
     shell_host::window::remember_fullscreen(fullscreen);
     Ok(())
@@ -307,5 +319,7 @@ pub fn exit_shell(app: AppHandle, state: State<'_, AppState>) {
 
 #[tauri::command]
 pub fn minimize_shell(window: WebviewWindow) -> CmdResult<()> {
-    window.minimize().map_err(|e| CoreError::Other(e.to_string()))
+    window
+        .minimize()
+        .map_err(|e| CoreError::Other(e.to_string()))
 }

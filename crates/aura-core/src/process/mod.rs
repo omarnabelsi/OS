@@ -39,11 +39,18 @@ pub struct ProcessService {
 
 impl ProcessService {
     pub fn new(sink: Arc<dyn EventSink>) -> Self {
-        Self { sink, sessions: Mutex::new(HashMap::new()) }
+        Self {
+            sink,
+            sessions: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn active_sessions(&self) -> Vec<LaunchSession> {
-        self.sessions.lock().values().map(|h| h.session.clone()).collect()
+        self.sessions
+            .lock()
+            .values()
+            .map(|h| h.session.clone())
+            .collect()
     }
 }
 
@@ -64,13 +71,20 @@ pub fn launch_entry(core: Arc<Core>, entry_id: &str) -> Result<LaunchSession> {
 
     core.process.sessions.lock().insert(
         session.session_id.clone(),
-        SessionHandle { session: session.clone(), install_path: entry.install_path.clone() },
+        SessionHandle {
+            session: session.clone(),
+            install_path: entry.install_path.clone(),
+        },
     );
     core.sink.emit(CoreEvent::ProcessStarted(session.clone()));
 
     let target = watch::WatchTarget {
         root_pid: spawned.pid,
-        install_path: entry.install_path.as_deref().map(PathBuf::from).filter(|p| p.is_dir()),
+        install_path: entry
+            .install_path
+            .as_deref()
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir()),
         exe_path: launch::exe_path(&entry.launch),
         ..Default::default()
     };
@@ -92,12 +106,14 @@ pub fn launch_entry(core: Arc<Core>, entry_id: &str) -> Result<LaunchSession> {
                 tracing::warn!("cannot record playtime for {watched_entry_id}: {e}");
             }
             watcher_core.process.sessions.lock().remove(&session_id);
-            watcher_core.sink.emit(CoreEvent::ProcessExited(ProcessExited {
-                session_id,
-                entry_id: watched_entry_id,
-                exit_code: info.exit_code,
-                duration_secs: secs,
-            }));
+            watcher_core
+                .sink
+                .emit(CoreEvent::ProcessExited(ProcessExited {
+                    session_id,
+                    entry_id: watched_entry_id,
+                    exit_code: info.exit_code,
+                    duration_secs: secs,
+                }));
         })
         .map_err(|e| CoreError::Launch(format!("cannot spawn the watcher thread: {e}")))?;
 
@@ -122,21 +138,32 @@ mod tests {
     #[test]
     fn launching_a_missing_entry_is_not_found() {
         let (_tmp, core, _sink) = test_core();
-        assert!(matches!(launch_entry(core, "nope"), Err(CoreError::NotFound(_))));
+        assert!(matches!(
+            launch_entry(core, "nope"),
+            Err(CoreError::NotFound(_))
+        ));
     }
 
     #[test]
     fn launch_records_stats_emits_and_tracks_the_session() {
         let (_tmp, core, sink) = test_core();
 
-        let exe = std::env::var("COMSPEC")
-            .unwrap_or_else(|_| if cfg!(windows) { r"C:\Windows\System32\cmd.exe".into() } else { "/bin/sh".into() });
+        let exe = std::env::var("COMSPEC").unwrap_or_else(|_| {
+            if cfg!(windows) {
+                r"C:\Windows\System32\cmd.exe".into()
+            } else {
+                "/bin/sh".into()
+            }
+        });
         if !std::path::Path::new(&exe).is_file() {
             eprintln!("skipping: {exe} not present");
             return;
         }
-        let args =
-            if cfg!(windows) { vec!["/c".to_string(), "exit".to_string()] } else { vec!["-c".to_string(), "exit 0".to_string()] };
+        let args = if cfg!(windows) {
+            vec!["/c".to_string(), "exit".to_string()]
+        } else {
+            vec!["-c".to_string(), "exit 0".to_string()]
+        };
 
         let entry = Entry {
             id: "e1".into(),
@@ -144,7 +171,11 @@ mod tests {
             entry_type: EntryType::App,
             source: Source::Manual,
             source_id: None,
-            launch: LaunchSpec::Exe { path: exe, args, cwd: None },
+            launch: LaunchSpec::Exe {
+                path: exe,
+                args,
+                cwd: None,
+            },
             install_path: None,
             install_size: None,
             created_at: 1,
@@ -161,7 +192,9 @@ mod tests {
 
         let events = sink.take();
         assert!(
-            events.iter().any(|e| matches!(e, CoreEvent::ProcessStarted(s) if s.entry_id == "e1")),
+            events
+                .iter()
+                .any(|e| matches!(e, CoreEvent::ProcessStarted(s) if s.entry_id == "e1")),
             "a ProcessStarted event must be emitted immediately"
         );
     }

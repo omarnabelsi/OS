@@ -38,15 +38,22 @@ pub fn override_path(
 ) -> PathBuf {
     let source = source_file.to_string_lossy().to_string();
     let ext = extension_for(&source, None);
-    artwork_dir
-        .join(entry_id)
-        .join(format!("{}-user-{}.{ext}", kind.as_str(), &short_hash(&source)[..8]))
+    artwork_dir.join(entry_id).join(format!(
+        "{}-user-{}.{ext}",
+        kind.as_str(),
+        &short_hash(&source)[..8]
+    ))
 }
 
 /// File extension guess from URL path or content type ("jpg" | "png" | "webp" | "gif" | "ico").
 pub fn extension_for(url: &str, content_type: Option<&str>) -> &'static str {
     if let Some(ct) = content_type {
-        let ct = ct.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+        let ct = ct
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
         match ct.as_str() {
             "image/jpeg" | "image/jpg" => return "jpg",
             "image/png" => return "png",
@@ -86,21 +93,30 @@ pub fn download(http: &reqwest::blocking::Client, url: &str, dest: &Path) -> Res
         return Err(CoreError::Http(format!("GET {url} returned {status}")));
     }
 
-    if let Some(ct) = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
+    if let Some(ct) = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
     {
         if !ct.to_ascii_lowercase().starts_with("image/") {
-            return Err(CoreError::Http(format!("{url} is not an image (content-type {ct})")));
+            return Err(CoreError::Http(format!(
+                "{url} is not an image (content-type {ct})"
+            )));
         }
     }
     if let Some(len) = resp.content_length() {
         if len > MAX_BYTES {
-            return Err(CoreError::Http(format!("{url} is {len} bytes, over the {MAX_BYTES} limit")));
+            return Err(CoreError::Http(format!(
+                "{url} is {len} bytes, over the {MAX_BYTES} limit"
+            )));
         }
     }
 
     let bytes = resp.bytes()?;
     if bytes.len() as u64 > MAX_BYTES {
-        return Err(CoreError::Http(format!("{url} is over the {MAX_BYTES} byte limit")));
+        return Err(CoreError::Http(format!(
+            "{url} is over the {MAX_BYTES} byte limit"
+        )));
     }
     // An empty body is not a usable image; treat it like a miss so the next candidate is tried.
     if bytes.is_empty() {
@@ -142,16 +158,26 @@ mod tests {
     fn extension_prefers_content_type() {
         assert_eq!(extension_for("http://x/y", Some("image/png")), "png");
         assert_eq!(extension_for("http://x/y.jpg", Some("image/webp")), "webp");
-        assert_eq!(extension_for("http://x/y.jpg", Some("image/png; charset=binary")), "png");
+        assert_eq!(
+            extension_for("http://x/y.jpg", Some("image/png; charset=binary")),
+            "png"
+        );
     }
 
     #[test]
     fn extension_falls_back_to_the_url() {
-        assert_eq!(extension_for("https://cdn/apps/620/library_600x900.jpg", None), "jpg");
+        assert_eq!(
+            extension_for("https://cdn/apps/620/library_600x900.jpg", None),
+            "jpg"
+        );
         assert_eq!(extension_for("https://cdn/logo.PNG", None), "png");
         assert_eq!(extension_for("https://cdn/a.webp?token=1", None), "webp");
         assert_eq!(extension_for("https://cdn/icon.ico#frag", None), "ico");
-        assert_eq!(extension_for("https://cdn/no-extension", None), "jpg", "default");
+        assert_eq!(
+            extension_for("https://cdn/no-extension", None),
+            "jpg",
+            "default"
+        );
         // A dot in a parent segment must not be read as the extension.
         assert_eq!(extension_for("https://cdn/v1.2/image", None), "jpg");
     }
@@ -174,7 +200,10 @@ mod tests {
 
         assert_eq!(a.parent().unwrap().file_name().unwrap(), "e1");
         let name = a.file_name().unwrap().to_str().unwrap();
-        assert!(name.starts_with("grid-") && name.ends_with(".png"), "got {name}");
+        assert!(
+            name.starts_with("grid-") && name.ends_with(".png"),
+            "got {name}"
+        );
     }
 
     #[test]
@@ -182,7 +211,10 @@ mod tests {
         let dir = Path::new("C:/cache/artwork");
         let p = override_path(dir, "e1", ArtworkKind::Grid, Path::new("C:/pics/mine.png"));
         let name = p.file_name().unwrap().to_str().unwrap();
-        assert!(name.starts_with("grid-user-") && name.ends_with(".png"), "got {name}");
+        assert!(
+            name.starts_with("grid-user-") && name.ends_with(".png"),
+            "got {name}"
+        );
 
         let q = override_path(dir, "e1", ArtworkKind::Grid, Path::new("C:/pics/other.png"));
         assert_ne!(p, q);
@@ -197,7 +229,11 @@ mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), b"first");
 
         write_atomic(&dest, b"second").unwrap();
-        assert_eq!(std::fs::read(&dest).unwrap(), b"second", "overwrite must work");
+        assert_eq!(
+            std::fs::read(&dest).unwrap(),
+            b"second",
+            "overwrite must work"
+        );
 
         let leftovers: Vec<_> = std::fs::read_dir(dest.parent().unwrap())
             .unwrap()
