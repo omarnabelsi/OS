@@ -25,6 +25,7 @@ const ROLES: Record<string, string> = {
   'aura-type-clock-hero': 'the desktop clock widget',
   'aura-type-clock': 'the taskbar clock',
   'aura-type-clock-date': 'the short date under the taskbar clock',
+  'aura-type-widget-date': 'the long date under the desktop clock widget',
   'aura-type-folder-label': "a folder's name",
   'aura-type-folder-meta': "a folder's item count",
   'aura-type-tile-label': "a tile's title",
@@ -37,11 +38,12 @@ const ROLES: Record<string, string> = {
 /**
  * Roles with no component yet, and why.
  *
- * Both belong to desktop widgets the desktop-surface work has not built. Listing them rather than
- * deleting the classes keeps the gap visible - and the third test below fails once they *are*
- * used, so the list gets trimmed instead of forgotten.
+ * Empty, and worth keeping that way. It held `clock-hero` and `folder-meta` while the desktop
+ * surface was still tile rows; the clock widget and the folder's meta line now use both. The
+ * third test below fails if a role is added here without being used, or used without being
+ * removed from this list.
  */
-const NOT_YET_USED = ['aura-type-clock-hero', 'aura-type-folder-meta'];
+const NOT_YET_USED: string[] = [];
 
 /** Component source only: a role named in a test (this one included) is not a usage. */
 function componentSources(dir: string, out: string[] = []): string[] {

@@ -23,6 +23,13 @@ vi.mock('@/focus', () => ({
   }),
 }));
 
+// The bar reads `taskbar.edge` / `taskbar.align` from the active theme as its default. A mutable
+// stand-in, so a test can play the part of a theme that docks the bar somewhere else.
+const theme = vi.hoisted(() => ({ tokens: {} as Record<string, Record<string, string>> }));
+vi.mock('@/theme', () => ({
+  useTheme: () => ({ bundle: { tokens: theme.tokens } }),
+}));
+
 const { baseSettings, fakeApi, makeItem, resetFakeApi } = await import('@/store/test-helpers');
 const { useDesktopStore, useLibraryStore, useSettingsStore } = await import('@/store');
 const { resetWm, useWmStore } = await import('@/wm');
@@ -32,6 +39,7 @@ const wm = () => useWmStore.getState();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  theme.tokens = {};
   resetFakeApi();
   resetWm();
   useSettingsStore.setState({ settings: { ...baseSettings } });
@@ -44,6 +52,31 @@ function openWindow(title: string, targetId: string): string {
 }
 
 describe('Taskbar', () => {
+  it("docks where the theme's tokens say until the user's settings have loaded", () => {
+    theme.tokens = { taskbar: { edge: 'top', align: 'start' } };
+    useSettingsStore.setState({ settings: null });
+    const { container } = render(<Taskbar />);
+    const bar = container.querySelector('.aura-taskbar')!;
+    expect(bar.getAttribute('data-position')).toBe('top');
+    expect(bar.getAttribute('data-align')).toBe('start');
+  });
+
+  it("ignores a theme edge that is not an edge, rather than docking nowhere", () => {
+    theme.tokens = { taskbar: { edge: 'diagonal', align: 'sideways' } };
+    useSettingsStore.setState({ settings: null });
+    const { container } = render(<Taskbar />);
+    const bar = container.querySelector('.aura-taskbar')!;
+    expect(bar.getAttribute('data-position')).toBe('bottom');
+    expect(bar.getAttribute('data-align')).toBe('center');
+  });
+
+  it("lets the user's setting win over the theme once it has loaded", () => {
+    theme.tokens = { taskbar: { edge: 'top' } };
+    useSettingsStore.setState({ settings: { ...baseSettings, taskbarPosition: 'left' } });
+    const { container } = render(<Taskbar />);
+    expect(container.querySelector('.aura-taskbar')!.getAttribute('data-position')).toBe('left');
+  });
+
   it('shows the clock, and no battery on a machine that has none', async () => {
     const { container } = render(<Taskbar />);
     expect(container.querySelector('time')).not.toBeNull();
@@ -53,7 +86,13 @@ describe('Taskbar', () => {
   });
 
   it('shows the battery level when there is a battery', async () => {
-    fakeApi.getSystemStatus.mockResolvedValue({ batteryPercent: 57, charging: false, hasBattery: true });
+    fakeApi.getSystemStatus.mockResolvedValue({
+      batteryPercent: 57,
+      charging: false,
+      hasBattery: true,
+      epochMs: Date.UTC(2026, 8, 12, 9, 41, 0),
+      utcOffsetMinutes: 0,
+    });
     render(<Taskbar />);
     expect(await screen.findByText('57%')).toBeDefined();
   });

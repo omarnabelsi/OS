@@ -10,6 +10,12 @@
 @import './shell.css';
 /* The aurora field - elevation e0, the ground everything else is raised above. */
 @import './field.css';
+/* The folder: the desktop's centrepiece, and the only component with its own stylesheet. */
+@import './folder.css';
+/* The desktop surface it sits on: the snap grid, the drop preview and the widgets. */
+@import './desktop.css';
+/* The taskbar: a detached pill, one rule set for all four edges. */
+@import './taskbar.css';
 /* The elevation ladder. After shell.css so a level's shadow and tint beat any structural rule
    left on the same element. */
 @import './elevation.css';
@@ -108,11 +114,30 @@
   --taskbar-margin: 28px;
   --taskbar-size: 4.75rem;
   --taskbar-inset: 28px;
+  --taskbar-gap: 10px;
+  --taskbar-padding: 16px;
+  --taskbar-plate-radius: 16px;
+  --taskbar-border: rgba(255, 255, 255, 0.1);
 
   --folder-shape: rounded;
   --folder-tint-alpha: 0.2;
   --folder-art-width: 216px;
   --folder-art-height: 152px;
+  /*
+   * The tallest body and tab any shape may claim. Together these reserve the artwork slot, which
+   * is what keeps every folder's label at the same height whatever shape it is - see folder.css.
+   */
+  --folder-art-height-max: 152px;
+  --folder-tab-slot: 16px;
+  --folder-icon-size: 34px;
+  /* The glass: a sheen colour over a fall from `glassTop` to `glassBottom`, inside a border. */
+  --folder-glass-top: rgba(255, 255, 255, 0.115);
+  --folder-glass-bottom: rgba(255, 255, 255, 0.042);
+  --folder-border: rgba(255, 255, 255, 0.13);
+  --folder-sheen: rgba(255, 255, 255, 0.1);
+  --folder-cover-scrim: rgba(4, 10, 18, 0.72);
+  /* The focus bloom. Accent-derived, so it follows the theme and the user's accent override. */
+  --folder-bloom: color-mix(in srgb, var(--color-accent) 45%, transparent);
 
   --desktop-cell: 96px;
   --desktop-gap: 16px;

@@ -74,7 +74,7 @@ setting, and the probe re-derives the rest at every start.
 | `pin_to_taskbar` | `targetId` | `TaskbarItem` | Idempotent; pinning twice returns the same item |
 | `unpin_from_taskbar` | `targetId` | - | |
 | `reorder_taskbar` | `ids: string[]` | - | Rewrites `sortOrder` in one pass |
-| `get_system_status` | - | `SystemStatus` | Battery and charging from `GetSystemPowerStatus`. Never fails: a machine with no battery reports `hasBattery: false`, not an error. No clock - the UI uses `new Date()` |
+| `get_system_status` | - | `SystemStatus` | Battery and charging from `GetSystemPowerStatus`, plus the clock as `epochMs` + `utcOffsetMinutes` (`GetTimeZoneInformation`). Never fails: a machine with no battery reports `hasBattery: false`, not an error |
 | `list_themes` | - | `ThemeInfo[]` | bundled + user, user wins on id clash |
 | `get_theme` | `id?` | `ThemeBundle` | `id` omitted = active theme |
 | `set_active_theme` | `id` | `ThemeBundle` | Persists `themeId`, emits `theme://changed` |

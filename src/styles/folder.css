@@ -1,0 +1,274 @@
+/**
+ * The folder on the desktop, and its state machine.
+ *
+ * | | Rest | Hover | Focus | Press |
+ * |--|--|--|--|--|
+ * | transform | - | 1.02 | 1.06 | 0.985 |
+ * | surface   | 6% | 9%   | -    | 12%   |
+ * | ring      | -  | -    | 3px  | -     |
+ * | bloom     | -  | -    | 38px | -     |
+ * | peers     | -  | -    | 68%  | -     |
+ * | elevation | e1 | -    | e3   | -     |
+ *
+ * Focus deliberately says the same thing four ways - it lifts, it gains a ring, it blooms, and
+ * everything else dims. One signal alone is legible at a desk; from two metres it takes all four.
+ *
+ * The geometry is theme data: `--folder-art-height`, `--folder-art-radius`,
+ * `--folder-art-offset` and the `--folder-tab-*` set all come from `layout.json` by way of
+ * `folderShape.ts`, which is also what sanitises them.
+ */
+
+.aura-folder {
+  /* A fixed slot for the artwork, so shapes of different heights still line their labels up. */
+  --folder-art-slot: calc(var(--folder-art-height-max, 152px) + var(--folder-tab-slot, 16px));
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* A drag must not select the label under the cursor. */
+  user-select: none;
+  touch-action: none;
+
+  /*
+   * The scale applies here, to artwork and label together - never to the artwork alone, which
+   * would grow it into the label. Transform only, so it composes on the GPU and costs no layout.
+   */
+  transform-origin: center top;
+  transition:
+    transform var(--duration-fast) var(--easing-standard),
+    opacity var(--duration-base) var(--easing-standard);
+}
+
+/* ---- the artwork slot ----------------------------------------------------------------------- */
+
+.aura-folder-art {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /*
+   * Never negotiated.
+   *
+   * The artwork's size is theme data, and the folder sits in a grid cell that is deliberately a
+   * little shorter than a folder is tall - the row gap absorbs the difference. As a flex item
+   * with the default `0 1 auto`, the artwork answered that by shrinking: a 152px body rendered
+   * at 121 and a 104px capsule at 73, each by a different amount, which also pushed every
+   * label to a different height. `flex: none` is what makes the declared geometry the drawn
+   * geometry.
+   */
+  flex: none;
+  width: var(--folder-art-width, 216px);
+  /* The tab sits above the body and adds its own height. */
+  height: calc(var(--folder-art-height, 152px) + var(--folder-tab-height, 0px));
+  margin-top: var(--folder-art-offset, 0px);
+  /*
+   * Whatever the shape did not use. This is what keeps the label at the same height for a 104px
+   * capsule pushed down 24px and a 152px rounded body - `max()` so an unusually tall shape
+   * overflows the slot downwards rather than pulling the label up into the artwork.
+   */
+  margin-bottom: max(
+    0px,
+    var(--folder-art-slot) - var(--folder-art-height, 152px) - var(--folder-tab-height, 0px) -
+      var(--folder-art-offset, 0px)
+  );
+}
+
+/*
+ * The tab of a tab-shaped folder. No bottom border and a negative bottom margin, so it reads as
+ * one piece with the body rather than as a plate balanced on top of it.
+ */
+.aura-folder-tab {
+  flex: none;
+  width: var(--folder-tab-width, 84px);
+  height: var(--folder-tab-height, 16px);
+  border: 1px solid var(--folder-border, rgba(255, 255, 255, 0.13));
+  border-bottom: 0;
+  border-radius: var(--folder-tab-radius, 10px 10px 0 0);
+  background-image: var(--folder-glass);
+}
+
+.aura-folder-body {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--folder-border, rgba(255, 255, 255, 0.13));
+  border-radius: var(--folder-art-radius, 28px);
+
+  /*
+   * The glass, expressed through the elevation ladder's own fill hook so the body stays a real
+   * surface - it keeps the level's shadow, and the blur budget can still grant or refuse it a
+   * backdrop-filter. The sheen is listed first because the first background layer is the top one.
+   */
+  --surface-fill: var(--folder-glass);
+  transition:
+    box-shadow var(--duration-base) var(--easing-emphasized),
+    border-color var(--duration-fast) var(--easing-standard),
+    outline-color var(--duration-base) var(--easing-emphasized);
+}
+
+/**
+ * The default glass: a top-left sheen over a 158deg fall from bright to nearly clear.
+ *
+ * Defined as one variable so a tint or a cover can replace the whole fill in one declaration
+ * rather than re-stating the layers.
+ */
+.aura-folder {
+  --folder-glass: radial-gradient(
+      92% 74% at 18% 0%,
+      var(--folder-sheen, rgba(255, 255, 255, 0.1)),
+      transparent 64%
+    ),
+    linear-gradient(
+      158deg,
+      var(--folder-glass-top, rgba(255, 255, 255, 0.115)),
+      var(--folder-glass-bottom, rgba(255, 255, 255, 0.042))
+    );
+}
+
+/* A tinted folder: the theme's colour at `folder.tintAlpha`, and a border that follows it. */
+.aura-folder[data-tinted] {
+  --folder-glass: radial-gradient(
+      92% 74% at 18% 0%,
+      var(--folder-sheen, rgba(255, 255, 255, 0.1)),
+      transparent 64%
+    ),
+    linear-gradient(
+      158deg,
+      color-mix(
+        in srgb,
+        var(--folder-tint) calc(var(--folder-tint-alpha, 0.2) * 100%),
+        transparent
+      ),
+      color-mix(
+        in srgb,
+        var(--folder-tint) calc(var(--folder-tint-alpha, 0.2) * 40%),
+        transparent
+      )
+    );
+  --folder-border: color-mix(in srgb, var(--folder-tint) 42%, transparent);
+}
+
+/* ---- cover art -------------------------------------------------------------------------------- */
+
+.aura-folder-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/*
+ * Over an arbitrary image the icon can land on anything, so the bottom of the cover is darkened
+ * and a conic sheen is laid over it - the sheen is what stops a photograph reading as a flat
+ * sticker on a glass panel.
+ */
+.aura-folder-cover-scrim {
+  position: absolute;
+  inset: 0;
+  background-image: conic-gradient(
+      from 210deg at 22% 0%,
+      var(--folder-sheen, rgba(255, 255, 255, 0.1)),
+      transparent 28%
+    ),
+    linear-gradient(180deg, transparent, var(--folder-cover-scrim, rgba(4, 10, 18, 0.72)));
+}
+
+.aura-folder-icon {
+  position: absolute;
+  bottom: 0.72em;
+  left: 0.78em;
+  display: grid;
+  place-items: center;
+  font-size: var(--folder-icon-size, 34px);
+  color: var(--color-text);
+  /* Legible over both glass and a cover. */
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+}
+
+.aura-folder[data-tinted]:not([data-covered]) .aura-folder-icon {
+  color: color-mix(in srgb, var(--folder-tint) 72%, var(--color-text));
+}
+
+/* ---- label and meta ---------------------------------------------------------------------------- */
+
+/* Text does not shrink either - see the note on `.aura-folder-art`. */
+.aura-folder-label {
+  flex: none;
+  margin-top: 14px;
+  /* Never wider than the artwork, so a long name cannot widen the cell and shift its neighbours. */
+  max-width: var(--folder-art-width, 216px);
+}
+
+.aura-folder-meta {
+  flex: none;
+  margin-top: 4px;
+  max-width: var(--folder-art-width, 216px);
+}
+
+/* ---- the state machine -------------------------------------------------------------------------- */
+
+.aura-folder:hover:not([data-focused]):not([data-dragging]) {
+  transform: scale(1.02);
+}
+
+.aura-folder:hover:not([data-focused]) .aura-folder-body {
+  --folder-glass-top: rgba(255, 255, 255, 0.15);
+  --folder-glass-bottom: rgba(255, 255, 255, 0.06);
+}
+
+.aura-folder[data-focused] {
+  transform: scale(1.06);
+  /* Focus is the slow, emphasised one: it is a change of subject, not a pointer hint. */
+  transition:
+    transform var(--duration-base) var(--easing-emphasized),
+    opacity var(--duration-base) var(--easing-standard);
+}
+
+.aura-folder[data-focused] .aura-folder-body {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  /*
+   * Composed with the level's shadow rather than replacing it - a bare `box-shadow` here would
+   * be more specific than `.aura-surface-e3` and would silently drop the lift that focus just
+   * earned. The bloom is the accent so it follows the theme.
+   */
+  box-shadow: var(--elevation-e3-shadow), 0 0 38px var(--folder-bloom);
+}
+
+.aura-folder[data-pressed] {
+  transform: scale(0.985);
+  transition: transform var(--duration-fast) var(--easing-standard);
+}
+
+.aura-folder[data-pressed] .aura-folder-body {
+  --folder-glass-top: rgba(255, 255, 255, 0.2);
+  --folder-glass-bottom: rgba(255, 255, 255, 0.09);
+}
+
+.aura-folder[data-dragging] {
+  cursor: grabbing;
+  opacity: 0.85;
+  /* Follows the pointer, so nothing should smooth it. */
+  transition: none;
+}
+
+/**
+ * Peers dim while one folder is focused.
+ *
+ * The surface sets `data-focus-within` when anything in the desktop group holds focus, so this
+ * cannot fire while the desktop is merely idle - at rest every folder is at full opacity.
+ */
+.aura-desktop[data-focus-within] .aura-folder:not([data-focused]) {
+  opacity: 0.68;
+}

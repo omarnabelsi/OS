@@ -165,6 +165,9 @@ export function resetFakeApi(): void {
     batteryPercent: null,
     charging: true,
     hasBattery: false,
+    // A fixed instant, so anything formatting the clock is deterministic: 2026-09-12T09:41:00Z.
+    epochMs: 1_789_206_060_000,
+    utcOffsetMinutes: 0,
   });
   fakeApi.getExitHotkeyStatus.mockResolvedValue({
     accelerator: baseSettings.exitHotkey,

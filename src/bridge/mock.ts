@@ -180,7 +180,9 @@ const SEEDED_FOLDERS: Folder[] = [
   icon: icon as string,
   cover: null,
   layout: 'grid' as const,
-  shape: 'rounded',
+  // Mirrors the core's seeder: three different shapes, so none of the theme's looks like a dead
+  // setting on a first run. See `seed_if_empty` in crates/aura-core/src/desktop/mod.rs.
+  shape: (['rounded', 'capsule', 'tab', 'rounded'][i] ?? 'rounded') as string,
   kind: 'smart' as const,
   collectionId: null,
   filter: filter as EntryFilter,
@@ -211,6 +213,23 @@ function freshDesktopState() {
     iconOverride: null,
     sortOrder: i,
   }));
+
+  // The widgets, holding the right of the seven-column grid - as the core's seeder places them.
+  items.push(
+    ...(['clock', 'now-playing'] as const).map((widget, i) => ({
+      id: `widget-${widget}`,
+      desktopId: 'desktop-1',
+      kind: 'widget' as const,
+      targetId: widget,
+      x: 5,
+      y: i,
+      width: 2,
+      height: 1,
+      labelOverride: null,
+      iconOverride: null,
+      sortOrder: 100 + i,
+    })),
+  );
   const taskbar: TaskbarItem[] = [
     { id: 'launcher', kind: 'launcher', targetId: null, sortOrder: -1000 },
     { id: 'pin-1', kind: 'pinned', targetId: 'g-solstice', sortOrder: 0 },
@@ -786,6 +805,10 @@ export const mockApi: AuraApi = {
       batteryPercent: 40 + Math.round(40 * Math.abs(Math.sin(minutes / 30))),
       charging: Math.floor(minutes / 5) % 2 === 0,
       hasBattery: true,
+      // The browser's clock stands in for the host's. `utcOffsetMinutes` has the opposite sign
+      // to `getTimezoneOffset`, which counts minutes to *add to local time* to reach UTC.
+      epochMs: Date.now(),
+      utcOffsetMinutes: -new Date().getTimezoneOffset(),
     };
   },
 

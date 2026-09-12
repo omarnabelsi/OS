@@ -340,6 +340,16 @@ export interface SystemStatus {
   batteryPercent: number | null;
   charging: boolean;
   hasBattery: boolean;
+  /**
+   * The host's wall clock, in milliseconds since the Unix epoch.
+   *
+   * An anchor, not a tick: `useShellClock` advances its own display from a monotonic clock
+   * between reads and re-anchors on each one, so the host stays the source of truth without a
+   * round trip per second.
+   */
+  epochMs: number;
+  /** Minutes to add to UTC for the host's local time; negative west of Greenwich. */
+  utcOffsetMinutes: number;
 }
 
 /**
@@ -510,10 +520,28 @@ export interface ThemeTokens {
   [group: string]: Record<string, ThemeTokenValue> | undefined;
 }
 
-/** A folder shape a theme offers the folder editor. `asset` is relative to the theme folder. */
+/**
+ * A folder shape a theme offers. `asset` is relative to the theme folder.
+ *
+ * The geometry fields are what the desktop actually draws - the shape of a folder is theme data,
+ * not component code. `asset` remains the picker's thumbnail, so a theme can show a silhouette
+ * that its geometry cannot express.
+ *
+ * Everything here has passed `sanitise_folder_shapes` in the core: sizes are plain numbers within
+ * range and `radius` carries lengths only. That matters because `radius` ends up in an inline
+ * style, and `layout.json` comes from a shared theme (docs/RISKS.md R5).
+ */
 export interface ThemeFolderShape {
   id: string;
   asset: string;
+  /** Artwork height in CSS pixels at 1x. Width is `folder.artWidth`, shared by every shape. */
+  height?: number;
+  /** `border-radius` for the artwork body. */
+  radius?: string;
+  /** Pushes the artwork down so a short shape's optical centre lines up with its neighbours. */
+  offsetTop?: number;
+  /** A tab above the body, as on a physical folder. */
+  tab?: { width?: number; height?: number; radius?: string };
 }
 
 /** Shape of layout.json. */

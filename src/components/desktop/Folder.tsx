@@ -1,0 +1,172 @@
+/**
+ * A folder on the desktop: artwork, label, meta, and the four states.
+ *
+ * The centrepiece of the shell, so three things here are deliberate and worth not undoing.
+ *
+ * **The scale is on the wrapper, not the artwork.** A focused folder grows to 1.06. Scaling only
+ * the artwork would grow it *downwards into the label* - the label sits a fixed 14px below, so
+ * artwork that grows from its own centre eats that gap and covers the text. Scaling the wrapper
+ * moves artwork and label together, and the gap survives every scale, tile size and UI scale.
+ *
+ * **The artwork sits in a fixed-height slot.** The three shapes are different heights (152, 104,
+ * and 152 under a 16px tab), and a capsule is pushed down 24px so its optical centre lines up
+ * with its neighbours. Laid out naively, each shape would put its label at a different height and
+ * a row of mixed folders would look broken. The slot is constant; the shape floats inside it.
+ *
+ * **Peers dim while one folder is focused.** The surface marks itself when anything in the
+ * desktop group holds focus, and every folder that is not the focused one drops to 68%. It is the
+ * awkward signal to implement and the one that makes focus readable from across a room - ring,
+ * bloom, lift and dim all say the same thing at different distances.
+ *
+ * The shape is theme data (`folderShape.ts`), not a branch here: three shapes today because
+ * `aura-default` declares three, and a fourth is an entry in a theme.
+ */
+
+import { useMemo } from 'react';
+
+import type { DesktopItem, Folder as FolderRecord } from '@/bridge';
+import { useFocusable } from '@/focus';
+import { assetUrl } from '@/lib/assetUrl';
+import { Surface } from '@/surface';
+
+import { Icon, type IconName } from '../Icon';
+import { pickShape, resolveGeometry } from './folderShape';
+import { useFolderShapes } from './FolderGlyph';
+import { useDragGesture } from './useDragGesture';
+
+export interface FolderProps {
+  item: DesktopItem;
+  folder: FolderRecord | undefined;
+  /** How many entries the folder holds, or null while that is still unknown. */
+  count: number | null;
+  /** Live pixel offset while dragging, or null. Owned by the surface. */
+  dragOffset: { dx: number; dy: number } | null;
+  onActivate(): void;
+  onDragStart(item: DesktopItem, pointerId: number): void;
+  onDragMove(dx: number, dy: number): void;
+  onDragEnd(): void;
+}
+
+export function Folder({
+  item,
+  folder,
+  count,
+  dragOffset,
+  onActivate,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: FolderProps): React.JSX.Element {
+  const shapes = useFolderShapes();
+
+  const geometry = useMemo(
+    () => resolveGeometry(pickShape(shapes, folder?.shape)),
+    [shapes, folder?.shape],
+  );
+
+  const {
+    ref,
+    visible: focused,
+    props: focusProps,
+  } = useFocusable({
+    id: `desktop:${item.id}`,
+    group: 'desktop',
+    onActivate,
+  });
+  /*
+   * The lift, ring, bloom, e3 and the peers dimming are for focus the user can see they placed -
+   * the D-pad or the keyboard. A pointer resting on a folder gets the hover state instead, and the
+   * engine's own placement on boot shows nothing: at rest every folder is at full opacity with no
+   * ring. The engine still knows which folder is focused either way.
+   */
+  const props = { ...focusProps, 'data-focused': focused || undefined };
+
+  /*
+   * The gesture activates through `props.onClick`, not through `onActivate` directly: the focus
+   * engine's handler moves focus here *and then* activates, so going around it would open a
+   * folder that the engine still thinks is unfocused.
+   */
+  const gesture = useDragGesture({
+    item,
+    onActivate: props.onClick,
+    onDragStart,
+    onDragMove,
+    onDragEnd,
+  });
+
+  const label = item.labelOverride ?? folder?.label ?? 'Untitled';
+  const cover = folder?.cover ? assetUrl(folder.cover) : undefined;
+  const tint = folder?.color ?? undefined;
+  const icon = (item.iconOverride ?? folder?.icon) as IconName | undefined;
+
+  /*
+   * All four states are CSS, driven by the data attributes below. They all animate the same
+   * properties, and the token durations are already there - `--duration-fast` for hover and
+   * press, `--duration-base` for focus - so reduced motion is honoured for free: the tokens go to
+   * 0ms and the states still apply, they just arrive instantly.
+   */
+  return (
+    <button
+      ref={ref as React.Ref<HTMLButtonElement>}
+      type="button"
+      className="aura-folder"
+      {...props}
+      data-pressed={gesture.pressed || undefined}
+      data-dragging={gesture.dragging || undefined}
+      data-shape={geometry.id}
+      data-tinted={tint ? true : undefined}
+      data-covered={cover ? true : undefined}
+      aria-label={label}
+      title={label}
+      style={
+        {
+          '--folder-art-height': `${geometry.height}px`,
+          '--folder-art-radius': geometry.radius,
+          '--folder-art-offset': `${geometry.offsetTop}px`,
+          ...(geometry.tab
+            ? {
+                '--folder-tab-width': `${geometry.tab.width}px`,
+                '--folder-tab-height': `${geometry.tab.height}px`,
+                '--folder-tab-radius': geometry.tab.radius,
+              }
+            : {}),
+          ...(tint ? { '--folder-tint': tint } : {}),
+          ...(dragOffset
+            ? { transform: `translate3d(${dragOffset.dx}px, ${dragOffset.dy}px, 0)` }
+            : {}),
+        } as React.CSSProperties
+      }
+      {...gesture.handlers}
+    >
+      <span className="aura-folder-art">
+        {/* A tab, when the theme's shape declares one. Drawn rather than masked, so it tints. */}
+        {geometry.tab ? <span className="aura-folder-tab" /> : null}
+
+        {/*
+          The body is the raised surface: it carries the level's shadow and whatever blur the
+          budget grants it. e1 at rest, e3 while focused - the design's "focused folder rises" -
+          and the level change moves it up the blur budget's priority order at the same time.
+        */}
+        <Surface level={focused ? 'e3' : 'e1'} as="span" className="aura-folder-body">
+          {cover ? (
+            <>
+              <img className="aura-folder-cover" src={cover} alt="" draggable={false} />
+              {/* Keeps the icon legible over an arbitrary image. */}
+              <span className="aura-folder-cover-scrim" />
+            </>
+          ) : null}
+
+          <span className="aura-folder-icon">
+            <Icon name={icon || 'files'} size="1em" />
+          </span>
+        </Surface>
+      </span>
+
+      <span className="aura-folder-label aura-type-folder-label">{label}</span>
+      {/* Empty rather than absent while the count is still loading: the row must not reflow. */}
+      <span className="aura-folder-meta aura-type-folder-meta">
+        {count === null ? ' ' : `${count} ${count === 1 ? 'item' : 'items'}`}
+      </span>
+    </button>
+  );
+}

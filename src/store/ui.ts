@@ -75,6 +75,17 @@ export interface UiState {
   /** Open the add overlay pre-set to `type`. Use this instead of `setOverlay('addEntry')`. */
   openAddEntry(type: EntryType): void;
 
+  /**
+   * The debug snap-grid overlay (Ctrl+Shift+G).
+   *
+   * Session-only and deliberately not a setting: it is a tool for working on drag-to-place, not a
+   * preference, and persisting it would eventually strand someone with cyan lines on their
+   * desktop and no idea why. Seeing the cells is the difference between "the drop felt wrong" and
+   * "the drop landed one column left".
+   */
+  showSnapGrid: boolean;
+  toggleSnapGrid(): void;
+
   toasts: ToastItem[];
   /** `ttlMs <= 0` (or non-finite) keeps the toast until dismissed. */
   pushToast(level: ToastLevel, message: string, ttlMs?: number): void;
@@ -130,6 +141,9 @@ export const useUiStore = create<UiState>()((set, get) => ({
   addEntryType: 'app',
   setAddEntryType: (addEntryType) => set({ addEntryType }),
   openAddEntry: (addEntryType) => set({ addEntryType, overlay: 'addEntry' }),
+
+  showSnapGrid: false,
+  toggleSnapGrid: () => set({ showSnapGrid: !get().showSnapGrid }),
 
   toasts: [],
   pushToast: (level, message, ttlMs = TOAST_TTL_MS) => {

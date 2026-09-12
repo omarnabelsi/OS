@@ -36,6 +36,22 @@
 }
 
 /* 13 / 500 / +0.05em / 56% - the short date under it. */
+/**
+ * The date under the desktop clock widget.
+ *
+ * Not `.aura-type-clock-date`, which is the 13px line under the *taskbar* clock. This one sits
+ * under 78px of hero numerals and has to hold its own against them, so it is larger, heavier and
+ * letterspaced into a caption rather than shrinking away.
+ */
+.aura-type-widget-date {
+  font-family: var(--font-family, var(--font-ui));
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-label, 600);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 56%, transparent);
+}
+
 .aura-type-clock-date {
   font-size: 0.8125rem;
   font-weight: var(--font-weight-meta);

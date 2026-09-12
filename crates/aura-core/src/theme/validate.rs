@@ -86,7 +86,96 @@ pub fn sanitise_folder_shapes(dir: &Path, layout: &mut serde_json::Value) -> Vec
         true
     });
 
+    // The geometry is separate: a shape with a bad radius is still a usable shape, so the bad
+    // *field* is dropped and the shape kept.
+    for shape in shapes.iter_mut() {
+        let id = shape
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        sanitise_shape_geometry(&id, shape, &mut notes);
+    }
+
     notes
+}
+
+/// Largest folder artwork dimension a theme may ask for, in CSS pixels at 1x scale.
+///
+/// Not a style judgement - a shape 40 000px tall would push every other item off the desktop and
+/// there would be no way back except editing the database.
+const MAX_SHAPE_PX: f64 = 1024.0;
+
+/// Whether a `border-radius` value from a theme is safe to put in an inline style.
+///
+/// This is the important one. `layout.json` comes from a *shared* theme and this string is handed
+/// to the UI, which writes it into a `style` attribute - so anything that can close a declaration
+/// and start another is an injection (docs/RISKS.md R5). Only lengths, percentages, the `/` that
+/// separates horizontal from vertical radii, and whitespace are allowed; no parentheses, so no
+/// `url(...)`, no `var(...)`, no `calc(...)`, and no comment or statement punctuation.
+pub fn is_safe_css_length_list(value: &str) -> bool {
+    if value.trim().is_empty() || value.len() > 64 {
+        return false;
+    }
+    let mut has_digit = false;
+    for c in value.chars() {
+        match c {
+            '0'..='9' => has_digit = true,
+            '.' | '%' | '/' | ' ' => {}
+            'a'..='z' => {}
+            _ => return false,
+        }
+    }
+    has_digit
+}
+
+fn take_px(shape: &mut serde_json::Value, field: &str, id: &str, notes: &mut Vec<String>) {
+    let Some(value) = shape.get(field) else {
+        return;
+    };
+    let ok = value
+        .as_f64()
+        .is_some_and(|n| n.is_finite() && (0.0..=MAX_SHAPE_PX).contains(&n));
+    if !ok {
+        notes.push(format!(
+            "folder shape `{id}`: `{field}` must be a number of pixels up to {MAX_SHAPE_PX}; ignored"
+        ));
+        shape.as_object_mut().map(|o| o.remove(field));
+    }
+}
+
+fn take_radius(shape: &mut serde_json::Value, field: &str, id: &str, notes: &mut Vec<String>) {
+    let Some(value) = shape.get(field) else {
+        return;
+    };
+    let ok = value.as_str().is_some_and(is_safe_css_length_list);
+    if !ok {
+        notes.push(format!(
+            "folder shape `{id}`: `{field}` must be lengths only (no functions or punctuation); ignored"
+        ));
+        shape.as_object_mut().map(|o| o.remove(field));
+    }
+}
+
+/// Drop any geometry field a theme got wrong, keeping the shape itself.
+fn sanitise_shape_geometry(id: &str, shape: &mut serde_json::Value, notes: &mut Vec<String>) {
+    take_px(shape, "height", id, notes);
+    take_px(shape, "offsetTop", id, notes);
+    take_radius(shape, "radius", id, notes);
+
+    let Some(tab) = shape.get_mut("tab") else {
+        return;
+    };
+    if !tab.is_object() {
+        notes.push(format!(
+            "folder shape `{id}`: `tab` must be an object; ignored"
+        ));
+        shape.as_object_mut().map(|o| o.remove("tab"));
+        return;
+    }
+    take_px(tab, "width", id, notes);
+    take_px(tab, "height", id, notes);
+    take_radius(tab, "radius", id, notes);
 }
 
 /// Relative `url(...)` targets in a stylesheet, in source order.
@@ -364,6 +453,86 @@ mod tests {
 
         assert_eq!(css_asset(&dir, "assets/here.woff2").unwrap(), None);
         assert!(css_asset(&dir, "assets/gone.woff2").unwrap().is_some());
+    }
+
+    #[test]
+    fn a_radius_may_only_be_lengths() {
+        for good in [
+            "28px",
+            "56px",
+            "6px 28px 28px 28px",
+            "10px 10px 0 0",
+            "50%",
+            "2px / 3px",
+        ] {
+            assert!(is_safe_css_length_list(good), "{good} should be allowed");
+        }
+        // The ones that matter: anything that could close this declaration and open another, or
+        // reach a URL. These arrive from a shared theme and end up in a `style` attribute.
+        for bad in [
+            "url(evil.png)",
+            "var(--x)",
+            "calc(100% - 2px)",
+            "28px; background: red",
+            "28px} .a {color: red",
+            "28px !important",
+            "",
+            "   ",
+        ] {
+            assert!(!is_safe_css_length_list(bad), "{bad} should be refused");
+        }
+    }
+
+    #[test]
+    fn a_bad_geometry_field_is_dropped_and_the_shape_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = theme_dir(tmp.path(), "aura-test");
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+        std::fs::write(dir.join("assets").join("a.svg"), b"<svg/>").unwrap();
+
+        let mut layout = serde_json::json!({
+            "folderShapes": [{
+                "id": "capsule",
+                "asset": "assets/a.svg",
+                "height": 104,
+                "radius": "56px; position: fixed",
+                "offsetTop": 99999,
+                "tab": { "width": 84, "radius": "url(x)" }
+            }]
+        });
+
+        let notes = sanitise_folder_shapes(&dir, &mut layout);
+        let shape = &layout["folderShapes"][0];
+
+        // The shape survives; only the fields it got wrong are gone.
+        assert_eq!(shape["id"], "capsule");
+        assert_eq!(shape["height"], 104);
+        assert!(shape.get("radius").is_none(), "dangerous radius kept");
+        assert!(shape.get("offsetTop").is_none(), "out-of-range size kept");
+        assert!(
+            shape["tab"].get("radius").is_none(),
+            "dangerous tab radius kept"
+        );
+        assert_eq!(shape["tab"]["width"], 84);
+        assert_eq!(
+            notes.len(),
+            3,
+            "each dropped field should be reported: {notes:?}"
+        );
+    }
+
+    #[test]
+    fn a_tab_that_is_not_an_object_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = theme_dir(tmp.path(), "aura-test");
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+        std::fs::write(dir.join("assets").join("a.svg"), b"<svg/>").unwrap();
+
+        let mut layout = serde_json::json!({
+            "folderShapes": [{ "id": "s", "asset": "assets/a.svg", "tab": "yes" }]
+        });
+        sanitise_folder_shapes(&dir, &mut layout);
+        assert!(layout["folderShapes"][0].get("tab").is_none());
     }
 
     #[test]

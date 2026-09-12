@@ -22,15 +22,22 @@ describe('seeded desktop', () => {
     expect(desktops).toHaveLength(1);
 
     const items = await mockApi.listDesktopItems(desktops[0]!.id);
-    expect(items).toHaveLength(4);
-    expect(items.every((i) => i.kind === 'folder')).toBe(true);
+    // Four folders clustered left, two widgets holding the right - the core seeds the same.
+    expect(items).toHaveLength(6);
+
+    // `folderItems`, not `folders`: this test already has the folder *records* under that name.
+    const folderItems = items.filter((i) => i.kind === 'folder');
     // Down the first column, in reading order.
-    expect(items.map((i) => [i.x, i.y])).toEqual([
+    expect(folderItems.map((i) => [i.x, i.y])).toEqual([
       [0, 0],
       [0, 1],
       [0, 2],
       [0, 3],
     ]);
+
+    const widgets = items.filter((i) => i.kind === 'widget');
+    expect(widgets.map((i) => i.targetId)).toEqual(['clock', 'now-playing']);
+    expect(widgets.every((i) => i.x === 5 && i.width === 2)).toBe(true);
 
     const folders = await mockApi.listFolders();
     expect(folders.map((f) => f.label)).toEqual([
@@ -93,10 +100,11 @@ describe('desktop items', () => {
       x: 3,
       y: 1,
     });
-    expect(await mockApi.listDesktopItems(desktop.id)).toHaveLength(5);
+    // Six seeded (four folders and two widgets), plus the one just added.
+    expect(await mockApi.listDesktopItems(desktop.id)).toHaveLength(7);
 
     await mockApi.removeDesktopItem(added.id);
-    expect(await mockApi.listDesktopItems(desktop.id)).toHaveLength(4);
+    expect(await mockApi.listDesktopItems(desktop.id)).toHaveLength(6);
   });
 });
 
@@ -141,7 +149,8 @@ describe('folders', () => {
 
     await mockApi.deleteFolder(folder.id);
     const left = await mockApi.listDesktopItems(desktop.id);
-    expect(left).toHaveLength(3);
+    // One of the six seeded items goes with the folder; the widgets are untouched.
+    expect(left).toHaveLength(5);
     expect(left.some((i) => i.targetId === folder.id)).toBe(false);
   });
 });

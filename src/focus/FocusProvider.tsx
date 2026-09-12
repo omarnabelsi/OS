@@ -26,6 +26,7 @@ import {
   type Direction,
   type Rect,
 } from './geometry';
+import { recordPath, returnTarget, type ReturnPath } from './returnPath';
 
 export interface FocusableOptions {
   id: string;
@@ -41,8 +42,26 @@ interface FocusEntry extends FocusableOptions {
   element: HTMLElement;
 }
 
+/**
+ * What put focus where it is.
+ *
+ * - `nav`     - the D-pad, the keyboard, or code moving focus on the user's behalf.
+ * - `pointer` - the mouse hovering or clicking.
+ * - `auto`    - the engine itself: the first placement of a session, or re-homing focus after a
+ *               surface appeared or the focused entry went away.
+ *
+ * This is `:focus-visible`'s distinction. Mouse and pad share one focus, which keeps the hero panel
+ * and the colour bleed describing the same item however the user drives - but *showing* focus is
+ * a separate question. A ring is how a pad user knows where they are; a mouse user already knows,
+ * and for them the same ring turned every hover into a focus, so a design's separate hover state
+ * could never be seen. And a placement nobody asked for should show nothing at all.
+ */
+export type FocusSource = 'nav' | 'pointer' | 'auto';
+
 export interface FocusContextValue {
   focusedId: string | null;
+  /** What placed the current focus - see `FocusSource`. */
+  focusSource: FocusSource;
   /** The group moves are currently confined to. `null` means the whole screen. */
   scope: string | null;
   setScope(group: string | null): void;
@@ -56,7 +75,8 @@ export interface FocusContextValue {
    * hover mean hover.
    */
   pointerHasMoved(): boolean;
-  focus(id: string): void;
+  /** Focus an entry. Defaults to `nav`: code moving focus is doing it for the user. */
+  focus(id: string, source?: FocusSource): void;
   focusFirst(group?: string): boolean;
   move(direction: Direction): boolean;
   activate(): boolean;
@@ -83,6 +103,20 @@ const CHROME_GROUPS: ReadonlySet<string> = new Set(['nav', 'taskbar', 'titlebar'
 const isChrome = (group: string | undefined): boolean => group !== undefined && CHROME_GROUPS.has(group);
 
 /**
+ * Groups whose focus stays quiet until the user asks for it.
+ *
+ * The desktop is a composition first and a list second: at rest every folder sits at full opacity
+ * with no ring, and the engine's own first placement must not light one up and dim the rest. The
+ * first press of a direction there *reveals* where focus already is rather than moving it, so a
+ * pad user sees the folder they are on before they leave it.
+ *
+ * Other surfaces keep their automatic focus visible and moving on the first press: the Games
+ * screen's hero panel is driven by it, and a first press that did nothing there would read as a
+ * dropped input.
+ */
+const QUIET_GROUPS: ReadonlySet<string> = new Set(['desktop']);
+
+/**
  * Keeps the focused tile on screen.
  *
  * `behavior: 'auto'`, not `'smooth'`: `move()` measures live rects, and a smooth scroll is still
@@ -98,12 +132,15 @@ function revealElement(element: HTMLElement): void {
 export function FocusProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const entries = useRef(new Map<string, FocusEntry>());
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [focusSource, setFocusSource] = useState<FocusSource>('auto');
   const [scope, setScope] = useState<string | null>(null);
   // Bumped whenever the registry changes, so the auto-focus effect re-runs.
   const [registryVersion, setRegistryVersion] = useState(0);
 
   const focusedIdRef = useRef<string | null>(null);
   focusedIdRef.current = focusedId;
+  const focusSourceRef = useRef<FocusSource>('auto');
+  focusSourceRef.current = focusSource;
   const scopeRef = useRef<string | null>(null);
   scopeRef.current = scope;
 
@@ -176,10 +213,13 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
   }, []);
   const pointerHasMoved = useCallback(() => pointerMovedRef.current, []);
 
-  const applyFocus = useCallback((id: string) => {
+  const applyFocus = useCallback((id: string, source: FocusSource = 'auto') => {
     const entry = entries.current.get(id);
     if (!entry) return;
     autoPlacedRef.current = true;
+    // The ref as well as the state, so a second call inside the same event already sees it.
+    focusSourceRef.current = source;
+    setFocusSource(source);
     setFocusedId(id);
     entry.onFocus?.();
 
@@ -196,9 +236,9 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
    * (see `userHasNavigatedRef`). Engine-driven placement goes through `applyFocus` directly.
    */
   const focus = useCallback(
-    (id: string) => {
+    (id: string, source: FocusSource = 'nav') => {
       userHasNavigatedRef.current = true;
-      applyFocus(id);
+      applyFocus(id, source);
       autoPlacedRef.current = false;
     },
     [applyFocus],
@@ -217,6 +257,14 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
     [candidates, focus],
   );
 
+  /**
+   * The last move that crossed from one group into another - see `returnPath.ts`.
+   *
+   * Without it Up from the taskbar picked whatever was aligned above the taskbar button, which on
+   * the desktop is the nav bar, and every folder was skipped on the way.
+   */
+  const returnPathRef = useRef<ReturnPath | null>(null);
+
   const move = useCallback(
     (direction: Direction) => {
       const pool = candidates();
@@ -228,7 +276,28 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
         // Nothing focused (or it vanished): take the first thing rather than doing nothing.
         const first = firstInReadingOrder(pool);
         if (!first) return false;
+        returnPathRef.current = null;
         focus(first.id);
+        return true;
+      }
+
+      // On a quiet surface, a focus the user has not seen yet is shown by the first press rather
+      // than moved away from - see `QUIET_GROUPS`.
+      if (
+        focusSourceRef.current !== 'nav' &&
+        current.group !== undefined &&
+        QUIET_GROUPS.has(current.group)
+      ) {
+        focus(current.id);
+        return true;
+      }
+
+      // The opposite press retraces a group crossing - but only to somewhere still reachable:
+      // an origin that has unmounted, or sits outside the current scope, falls back to geometry.
+      const back = returnTarget(returnPathRef.current, currentId, direction);
+      if (back && pool.some((c) => c.id === back)) {
+        returnPathRef.current = null;
+        focus(back);
         return true;
       }
 
@@ -238,7 +307,23 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
         pool.filter((c) => c.id !== currentId),
         direction,
       );
-      if (!next) return false;
+      if (!next) {
+        // Nowhere to go - but if the user cannot see where focus is (the pointer or the engine put
+        // it there), the press should at least show them. Picking up the pad with the cursor
+        // resting on the taskbar and pressing Down used to do nothing at all, visibly or not.
+        if (focusSourceRef.current !== 'nav') {
+          focus(current.id);
+          return true;
+        }
+        return false;
+      }
+      returnPathRef.current = recordPath(
+        current.id,
+        current.group,
+        next.id,
+        entries.current.get(next.id)?.group,
+        direction,
+      );
       focus(next.id);
       return true;
     },
@@ -281,11 +366,14 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
     // screen when an entry disappears or an overlay takes over. When the entry itself is gone
     // from the registry - a filter changed, a background scan re-sorted the list - the remembered
     // rect stands in for it, rather than dropping straight to the first tile.
+    //
+    // A pad user keeps a visible focus through that: closing a window with the D-pad must land on
+    // the desktop with the ring already showing, not quietly waiting for another press.
     const previousRect =
       current?.element.isConnected ? current.element.getBoundingClientRect() : lastRectRef.current;
     if (previousRect) {
       const next = nearestTo(previousRect, pool);
-      if (next) applyFocus(next.id);
+      if (next) applyFocus(next.id, focusSourceRef.current === 'nav' ? 'nav' : 'auto');
       return;
     }
 
@@ -299,6 +387,7 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
   const value = useMemo<FocusContextValue>(
     () => ({
       focusedId,
+      focusSource,
       scope,
       setScope,
       register,
@@ -308,7 +397,7 @@ export function FocusProvider({ children }: { children: ReactNode }): React.JSX.
       move,
       activate,
     }),
-    [focusedId, scope, register, pointerHasMoved, focus, focusFirst, move, activate],
+    [focusedId, focusSource, scope, register, pointerHasMoved, focus, focusFirst, move, activate],
   );
 
   return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
@@ -323,12 +412,19 @@ export function useFocus(): FocusContextValue {
 export interface FocusableResult {
   ref: (element: HTMLElement | null) => void;
   focused: boolean;
+  /**
+   * Focused, *and* the focus should be shown: placed by the D-pad or keyboard rather than by the
+   * pointer or the engine. A surface with its own hover state, or a quiet rest state, draws its
+   * focus visuals from this rather than from `focused` - see `FocusSource`.
+   */
+  visible: boolean;
   /** Spread onto the element: focus ring hook, mouse support, accessibility. */
   props: {
     'data-focused': true | undefined;
     tabIndex: number;
     onMouseEnter: () => void;
-    onClick: () => void;
+    /** `detail` 0 is a click synthesised by the keyboard, which is navigation, not the pointer. */
+    onClick: (event?: { detail?: number }) => void;
   };
 }
 
@@ -337,11 +433,11 @@ export interface FocusableResult {
  *
  * Mouse and D-pad share a single notion of focus: hovering moves focus rather than running a
  * parallel highlight, so the hero panel and colour bleed always describe the same item however
- * the user is driving.
+ * the user is driving. Whether that focus is *drawn* is `visible`.
  */
 export function useFocusable(options: FocusableOptions): FocusableResult {
   const { id, group, onActivate, onFocus, disabled } = options;
-  const { focusedId, register, focus, pointerHasMoved } = useFocus();
+  const { focusedId, focusSource, register, focus, pointerHasMoved } = useFocus();
   const elementRef = useRef<HTMLElement | null>(null);
 
   // Latest callbacks without re-registering on every render.
@@ -370,17 +466,18 @@ export function useFocusable(options: FocusableOptions): FocusableResult {
   return {
     ref,
     focused,
+    visible: focused && focusSource === 'nav',
     props: {
       'data-focused': focused || undefined,
       tabIndex: focused ? 0 : -1,
       onMouseEnter: () => {
         // A cursor that merely happens to be here when the window opened has not hovered
         // anything; it has to move at least once first.
-        if (!disabled && pointerHasMoved()) focus(id);
+        if (!disabled && pointerHasMoved()) focus(id, 'pointer');
       },
-      onClick: () => {
+      onClick: (event) => {
         if (disabled) return;
-        focus(id);
+        focus(id, event?.detail === 0 ? 'nav' : 'pointer');
         handlers.current.onActivate?.();
       },
     },

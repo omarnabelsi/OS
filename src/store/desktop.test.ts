@@ -47,7 +47,8 @@ describe('load', () => {
     expect(s.loaded).toBe(true);
     expect(s.error).toBeNull();
     expect(s.activeId).toBe('desktop-1');
-    expect(s.items).toHaveLength(4);
+    // Four folder items plus the clock and now-playing widgets.
+    expect(s.items).toHaveLength(6);
     expect(s.folders).toHaveLength(4);
     expect(s.taskbar.length).toBeGreaterThan(0);
   });
@@ -113,7 +114,7 @@ describe('add and remove', () => {
       .addItem({ desktopId: 'desktop-1', kind: 'shortcut', targetId: 'g-solstice', x: 2, y: 2 });
 
     expect(added).not.toBeNull();
-    expect(useDesktopStore.getState().items).toHaveLength(5);
+    expect(useDesktopStore.getState().items).toHaveLength(7);
   });
 
   it('removes optimistically and restores if the bridge refuses', async () => {
@@ -125,12 +126,13 @@ describe('add and remove', () => {
       .mockRejectedValueOnce({ code: 'other', message: 'nope' });
 
     await useDesktopStore.getState().removeItem(item.id);
-    expect(useDesktopStore.getState().items).toHaveLength(4);
+    // Rolled back to the six seeded items.
+    expect(useDesktopStore.getState().items).toHaveLength(6);
     expect(useDesktopStore.getState().error).toBeTruthy();
     spy.mockRestore();
 
     await useDesktopStore.getState().removeItem(item.id);
-    expect(useDesktopStore.getState().items).toHaveLength(3);
+    expect(useDesktopStore.getState().items).toHaveLength(5);
   });
 });
 

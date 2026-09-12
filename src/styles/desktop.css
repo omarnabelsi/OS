@@ -1,0 +1,177 @@
+/**
+ * The desktop surface: a free-placement grid, and the widgets that live on it.
+ *
+ * The grid is deliberately not square - 259 x 240 including gaps, seven columns spanning 1920
+ * inside a 64px margin. A folder is 216 wide and up to 168 tall with its label under it, so a
+ * square cell would either waste a band beside every folder or crop the tall shapes.
+ *
+ * Positions are stored in **cells** and converted to pixels in exactly one place
+ * (`DesktopSurface`), which is what lets an arrangement made at 1080p survive a 4K monitor.
+ */
+
+.aura-desktop {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* Nothing here scrolls: the desktop is a fixed surface and items are clamped inside it. */
+  overflow: hidden;
+}
+
+/**
+ * The placeable area, inset by the screen margin.
+ *
+ * Its own element rather than padding on `.aura-desktop`, for two reasons: an absolutely
+ * positioned child is laid out against the *padding* box, so padding would not have inset the
+ * items at all, and `clientWidth` would have reported the margin as usable space - so the grid
+ * would have thought two more columns fit than really do.
+ */
+.aura-desktop-field {
+  position: absolute;
+  inset: var(--spacing-edge);
+}
+
+.aura-desktop-cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* transform, not top/left: the drag stays on the compositor. */
+  will-change: transform;
+}
+
+/* A folder fills its cell from the top, so its artwork slot lines up with its neighbours'. */
+.aura-desktop-cell[data-kind='folder'] {
+  display: block;
+}
+
+/* A plain shortcut is small and reads better centred in the cell than pinned to a corner. */
+.aura-desktop-cell[data-kind='shortcut'],
+.aura-desktop-cell[data-kind='separator'] {
+  display: grid;
+  place-items: center;
+}
+
+.aura-desktop-widget {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.aura-desktop-widget[data-dragging] {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+
+/* Where a dragged item would land. A preview only - no state is written until the drop. */
+.aura-desktop-drop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 55%, transparent);
+  pointer-events: none;
+}
+
+/**
+ * The debug snap grid (Ctrl+Shift+G).
+ *
+ * Drawn from the same strides the drop maths uses, so when the lines and the landing cell
+ * disagree the overlay is telling the truth about a bug. Column lines are the stronger of the
+ * two: columns are what items are aligned *to*, and rows are far enough apart to read anyway.
+ */
+.aura-desktop-snap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--color-accent) 16%, transparent) 0 1px,
+      transparent 1px var(--desktop-stride-x, 259px)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-accent) 10%, transparent) 0 1px,
+      transparent 1px var(--desktop-stride-y, 240px)
+    );
+}
+
+/* ---- widgets ---------------------------------------------------------------------------------- */
+
+.aura-widget {
+  min-width: 0;
+}
+
+.aura-widget-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  height: 100%;
+}
+
+.aura-widget-clock-time {
+  /* Tabular figures so the minute changing does not shift the whole block sideways. */
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 0 6px 34px rgba(0, 0, 0, 0.5);
+}
+
+.aura-widget-clock-date {
+  margin-top: 6px;
+}
+
+.aura-widget-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.aura-widget-status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--color-accent) 60%, transparent);
+}
+
+.aura-widget-now-playing {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--folder-border);
+  border-radius: var(--radius-lg);
+  /* Fill, shadow and blur come from elevation level e1. */
+}
+
+.aura-widget-art {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  font-size: 26px;
+  color: var(--color-accent);
+}
+
+.aura-widget-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.aura-widget-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}

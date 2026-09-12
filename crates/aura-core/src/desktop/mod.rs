@@ -22,6 +22,11 @@ pub const SEEDED_APPS: &str = "smart:apps";
 pub const SEEDED_FAVOURITES: &str = "smart:favourites";
 pub const SEEDED_RECENT: &str = "smart:recently-played";
 
+/// Widget ids. A `DesktopItemKind::Widget` addresses its widget by id in `target_id`, and the UI
+/// decides what to draw - the core neither knows nor cares what a clock looks like.
+pub const WIDGET_CLOCK: &str = "clock";
+pub const WIDGET_NOW_PLAYING: &str = "now-playing";
+
 fn emit_changed(core: &Core, reason: &str) {
     core.sink.emit(CoreEvent::DesktopUpdated(DesktopUpdated {
         reason: reason.to_string(),
@@ -220,8 +225,16 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
     };
     db::desktops::upsert(&core.db, &desktop)?;
 
-    // The old `home.rows`, promoted into openable folders. Column 0, top to bottom.
-    let seeds: [(&str, &str, EntryFilter, &str); 4] = [
+    /*
+     * The old `home.rows`, promoted into openable folders, clustered two by two on the left.
+     *
+     * The shapes vary on purpose. A first run that used one shape for everything would make the
+     * theme's other shapes look like dead settings - the shape is the most visible thing a folder
+     * has, and seeing three of them is how anyone discovers the folder editor can change it. Ids
+     * are per theme, and a folder whose shape the active theme does not offer falls back to that
+     * theme's first, so these names costing nothing on `aura-paper` is by design.
+     */
+    let seeds: [(&str, &str, EntryFilter, &str, &str); 4] = [
         (
             SEEDED_GAMES,
             "Games",
@@ -230,6 +243,7 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
                 ..Default::default()
             },
             "games",
+            "rounded",
         ),
         (
             SEEDED_APPS,
@@ -239,6 +253,7 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
                 ..Default::default()
             },
             "apps",
+            "capsule",
         ),
         (
             SEEDED_FAVOURITES,
@@ -248,6 +263,7 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
                 ..Default::default()
             },
             "star",
+            "tab",
         ),
         (
             SEEDED_RECENT,
@@ -258,10 +274,21 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
                 ..Default::default()
             },
             "play",
+            "rounded",
         ),
     ];
+    let seed_count = seeds.len();
 
-    for (row, (locator, label, filter, icon)) in seeds.into_iter().enumerate() {
+    /*
+     * Two columns wide, not one tall.
+     *
+     * The design's reference is 1080p, where the grid is seven columns by three rows. A column of
+     * four needed a fourth row, so on the very first launch the last folder was already pulled out
+     * of place to keep it on screen - a first run that looked rearranged rather than composed. Two
+     * by two fits, and still clusters left of the widgets in column five.
+     */
+    const SEED_COLUMNS: usize = 2;
+    for (index, (locator, label, filter, icon, shape)) in seeds.into_iter().enumerate() {
         // Reuse the row if a previous partial seed left it behind, so ids stay stable.
         let folder = match db::folders::find_by_path(&core.db, locator)? {
             Some(existing) => existing,
@@ -272,7 +299,7 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
                     kind: Some(FolderKind::Smart),
                     filter: Some(filter),
                     icon: Some(icon.to_string()),
-                    shape: Some("rounded".to_string()),
+                    shape: Some(shape.to_string()),
                     ..Default::default()
                 },
             )?,
@@ -284,8 +311,33 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
                 desktop_id: desktop.id.clone(),
                 kind: Some(DesktopItemKind::Folder),
                 target_id: Some(folder.id),
-                x: 0,
+                x: (index % SEED_COLUMNS) as i64,
+                y: (index / SEED_COLUMNS) as i64,
+                ..Default::default()
+            },
+        )?;
+    }
+
+    /*
+     * The widgets, holding the right-hand side.
+     *
+     * Placed on the same grid as everything else rather than pinned to a corner: a widget is a
+     * `DesktopItem` like a folder is, so it drags, snaps and survives a restart through exactly
+     * the same code, and the arrangement is the user's from the first run. Column 5 of seven,
+     * two cells wide, which leaves the four seeded folders clustered left with the composition
+     * of the design.
+     */
+    for (row, widget) in [WIDGET_CLOCK, WIDGET_NOW_PLAYING].into_iter().enumerate() {
+        db::desktops::add_item(
+            &core.db,
+            &NewDesktopItem {
+                desktop_id: desktop.id.clone(),
+                kind: Some(DesktopItemKind::Widget),
+                target_id: Some(widget.to_string()),
+                x: 5,
                 y: row as i64,
+                width: Some(2),
+                height: Some(1),
                 ..Default::default()
             },
         )?;
@@ -293,12 +345,8 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
 
     seed_taskbar(core)?;
     emit_changed(core, "seeded");
-    tracing::info!("seeded the default desktop with {} folders", seeds_len());
+    tracing::info!("seeded the default desktop with {seed_count} folders and 2 widgets");
     Ok(Some(desktop))
-}
-
-fn seeds_len() -> usize {
-    4
 }
 
 /// The launcher button, the system area, and the user's most-played titles pinned.
@@ -387,11 +435,60 @@ mod tests {
             .unwrap()
             .expect("a first run must seed");
         let items = list_items(&core, &desktop.id).unwrap();
-        assert_eq!(items.len(), 4, "games, apps, favourites, recently played");
-        assert!(items.iter().all(|i| i.kind == DesktopItemKind::Folder));
+        let folders: Vec<_> = items
+            .iter()
+            .filter(|i| i.kind == DesktopItemKind::Folder)
+            .collect();
+        let widgets: Vec<_> = items
+            .iter()
+            .filter(|i| i.kind == DesktopItemKind::Widget)
+            .collect();
+
+        assert_eq!(folders.len(), 4, "games, apps, favourites, recently played");
+        let mut cells: Vec<(i64, i64)> = folders.iter().map(|i| (i.x, i.y)).collect();
+        cells.sort();
+        assert_eq!(
+            cells,
+            vec![(0, 0), (0, 1), (1, 0), (1, 1)],
+            "folders cluster two by two on the left"
+        );
+
+        // The first run has to fit the design's reference display without anything being pulled
+        // into view: seven columns by three rows at 1080p. A column of four did not.
         assert!(
-            items.iter().all(|i| i.x == 0),
-            "seeded down the first column"
+            items
+                .iter()
+                .all(|i| i.x + i.width <= 7 && i.y + i.height <= 3),
+            "the seeded desktop must fit a 7 x 3 grid"
+        );
+        let occupied: std::collections::BTreeSet<(i64, i64)> = items
+            .iter()
+            .flat_map(|i| {
+                (i.x..i.x + i.width).flat_map(move |x| (i.y..i.y + i.height).map(move |y| (x, y)))
+            })
+            .collect();
+        let area: i64 = items.iter().map(|i| i.width * i.height).sum();
+        assert_eq!(occupied.len() as i64, area, "no two seeded items overlap");
+
+        // The widgets hold the right-hand side, which is what makes the first run a composition
+        // rather than a column of icons and a lot of empty space.
+        let ids: Vec<&str> = widgets
+            .iter()
+            .filter_map(|i| i.target_id.as_deref())
+            .collect();
+        assert_eq!(ids, vec![WIDGET_CLOCK, WIDGET_NOW_PLAYING]);
+        assert!(widgets.iter().all(|i| i.x == 5 && i.width == 2));
+
+        // Three shapes, so none of the theme's looks like a dead setting on a first run.
+        let shapes: std::collections::BTreeSet<String> = list_folders(&core)
+            .unwrap()
+            .into_iter()
+            .filter_map(|f| f.shape)
+            .collect();
+        assert_eq!(
+            shapes.len(),
+            3,
+            "seeded folders should not all share one shape"
         );
 
         let labels: Vec<String> = list_folders(&core)
@@ -408,7 +505,7 @@ mod tests {
 
         // Idempotent: starting again must not double everything up.
         assert!(seed_if_empty(&core).unwrap().is_none());
-        assert_eq!(list_items(&core, &desktop.id).unwrap().len(), 4);
+        assert_eq!(list_items(&core, &desktop.id).unwrap().len(), items.len());
     }
 
     #[test]
@@ -460,12 +557,12 @@ mod tests {
         let desktop = seed_if_empty(&core).unwrap().unwrap();
         let folder = list_folders(&core).unwrap().into_iter().next().unwrap();
 
-        assert_eq!(list_items(&core, &desktop.id).unwrap().len(), 4);
+        let before = list_items(&core, &desktop.id).unwrap().len();
         delete_folder(&core, &folder.id).unwrap();
         let left = list_items(&core, &desktop.id).unwrap();
         assert_eq!(
             left.len(),
-            3,
+            before - 1,
             "the orphaned item is pruned, not left opening nothing"
         );
         assert!(left

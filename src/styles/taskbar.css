@@ -1,0 +1,338 @@
+/**
+ * The taskbar: a detached floating pill.
+ *
+ * Detached is the whole idea - a margin off the screen edge, fully rounded, so the desktop reads
+ * as continuous behind it rather than stopping at a docked strip. It is still a *layout* sibling
+ * of the screen area rather than an overlay, which is what keeps windows from sliding underneath
+ * it; the margin is the detachment, and the reserved band is what makes the window layer honest.
+ *
+ * One rule set covers all four edges. `data-position` flips the flex axis and which side the bar
+ * anchors to, and everything else follows - so moving the bar is a change of anchor, not a second
+ * layout. `taskbar.edge` and `taskbar.align` are theme tokens; the user's own setting wins over
+ * both once it has loaded.
+ *
+ * Every size here is a token, and the hit area never drops below 44px at 1x however small a theme
+ * sets the icon plate: below that a pointer target is genuinely hard to hit, which is a usability
+ * floor rather than a style choice.
+ */
+
+.aura-taskbar {
+  position: relative;
+  z-index: 4;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--taskbar-gap, 10px);
+  /* The detachment. `margin` rather than `inset`, so the bar still reserves its own band. */
+  margin: var(--taskbar-margin, var(--taskbar-inset, 28px));
+  height: var(--taskbar-height, 76px);
+  padding: 0 var(--taskbar-padding, 16px);
+  border: 1px solid var(--taskbar-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--taskbar-radius, 28px);
+  /* Fill, shadow and blur come from elevation level e2 - the taskbar is the one surface up the
+     whole time, so it holds its blur ahead of the window when the budget binds. */
+  color: var(--color-text-muted);
+}
+
+/* Vertical docks: the bar becomes a column and the strip runs down it. */
+.aura-taskbar[data-position='left'],
+.aura-taskbar[data-position='right'] {
+  flex-direction: column;
+  width: var(--taskbar-size, 4.75rem);
+  height: auto;
+  padding: var(--taskbar-padding, 16px) 0;
+}
+
+.aura-taskbar-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--taskbar-gap, 10px);
+  overflow: hidden;
+}
+
+/* Windows 11 centres the buttons; Windows 10 did not. Both are one line here. */
+.aura-taskbar[data-align='center'] .aura-taskbar-strip {
+  justify-content: center;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-strip,
+.aura-taskbar[data-position='right'] .aura-taskbar-strip {
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+/* ---- icon plates ------------------------------------------------------------------------------ */
+
+.aura-taskbar-button {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45em;
+  /* The plate, and the floor under it: a theme may shrink the icon, never the target. */
+  width: var(--taskbar-icon-size, 56px);
+  height: var(--taskbar-icon-size, 56px);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--taskbar-plate-radius, 16px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1.35rem;
+  /* Rest: the glyph carries it, with no plate at all. */
+  opacity: 0.9;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--easing-standard),
+    opacity var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard),
+    outline-color var(--duration-base) var(--easing-emphasized),
+    box-shadow var(--duration-base) var(--easing-emphasized);
+}
+
+.aura-taskbar-button:hover {
+  background: color-mix(in srgb, var(--color-text) 9%, transparent);
+  color: var(--color-text);
+  opacity: 1;
+}
+
+/*
+ * Focus. The ring and the bloom appear on the *item*; the bar itself never scales - a pill that
+ * grew under the pointer would move every other target on it.
+ */
+.aura-taskbar-button[data-focused] {
+  color: var(--color-text);
+  opacity: 1;
+  outline: 4px solid var(--color-focus-ring);
+  outline-offset: -1px;
+  box-shadow: 0 0 44px color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+.aura-taskbar-button:active {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+  transform: scale(0.94);
+}
+
+/* A window button carries a title when there is room for one; a vertical bar has none. */
+.aura-taskbar-button[data-wide] {
+  width: auto;
+  max-width: 14rem;
+  padding: 0 0.7em;
+  font-size: 0.95rem;
+  justify-content: flex-start;
+}
+
+.aura-taskbar-button img {
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.aura-taskbar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-title,
+.aura-taskbar[data-position='right'] .aura-taskbar-title {
+  display: none;
+}
+
+/* ---- indicators ------------------------------------------------------------------------------- */
+
+/**
+ * Focused and merely running have to be distinguishable across a room, so they differ in three
+ * ways at once: width (20 against 6), ink (accent against muted) and a glow only the focused one
+ * has. Length alone would not survive being looked at from two metres.
+ */
+.aura-taskbar-indicator {
+  position: absolute;
+  border-radius: 2px;
+  transition:
+    width var(--duration-base) var(--easing-emphasized),
+    background var(--duration-base) var(--easing-standard);
+}
+
+.aura-taskbar-indicator[data-state='running'] {
+  width: 6px;
+  height: 3px;
+  background: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+
+.aura-taskbar-indicator[data-state='focused'] {
+  width: 20px;
+  height: 3px;
+  background: var(--color-accent);
+  box-shadow: 0 0 15px 2px color-mix(in srgb, var(--color-accent) 75%, transparent);
+}
+
+/* The indicator sits on whichever edge the bar is anchored to. */
+.aura-taskbar[data-position='bottom'] .aura-taskbar-indicator,
+.aura-taskbar[data-position='top'] .aura-taskbar-indicator {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.aura-taskbar[data-position='bottom'] .aura-taskbar-indicator {
+  bottom: 4px;
+}
+
+.aura-taskbar[data-position='top'] .aura-taskbar-indicator {
+  top: 4px;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-indicator,
+.aura-taskbar[data-position='right'] .aura-taskbar-indicator {
+  top: 50%;
+  transform: translateY(-50%) rotate(90deg);
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-indicator {
+  left: 2px;
+}
+
+.aura-taskbar[data-position='right'] .aura-taskbar-indicator {
+  right: 2px;
+}
+
+/**
+ * The badge slot.
+ *
+ * Styled but not yet filled: nothing in V1 produces a count to put here. It belongs to the
+ * download and update queue, which is V2 - and a badge showing a number the shell invented would
+ * be worse than no badge at all. The style lives here so the slot is ready and specified.
+ */
+.aura-taskbar-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--color-danger);
+  /* Dark text: the danger colour is bright enough that white on it is the harder read. */
+  color: var(--color-accent-contrast);
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-label, 600);
+  line-height: 18px;
+  text-align: center;
+}
+
+/* ---- tooltip ---------------------------------------------------------------------------------- */
+
+/**
+ * Appears after a dwell on hover and immediately on focus - a keyboard or pad user has no way to
+ * "hover for a moment", so making them wait would just be a delay with no purpose.
+ */
+.aura-taskbar-tooltip {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  border: 1px solid var(--taskbar-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-background) 92%, var(--color-surface-strong));
+  color: var(--color-text);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.aura-taskbar[data-position='top'] .aura-taskbar-tooltip {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-tooltip {
+  left: calc(100% + 10px);
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.aura-taskbar[data-position='right'] .aura-taskbar-tooltip {
+  right: calc(100% + 10px);
+  left: auto;
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ---- divider and system area ------------------------------------------------------------------ */
+
+.aura-taskbar-divider {
+  flex: none;
+  width: 1px;
+  height: 36px;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-divider,
+.aura-taskbar[data-position='right'] .aura-taskbar-divider {
+  width: 36px;
+  height: 1px;
+}
+
+.aura-taskbar-system {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-inline: 4px;
+}
+
+.aura-taskbar[data-position='left'] .aura-taskbar-system,
+.aura-taskbar[data-position='right'] .aura-taskbar-system {
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Glyphs sit back at 62%; see the clock below for the one exception. */
+.aura-taskbar-battery {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  opacity: 0.62;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.aura-taskbar-battery[data-charging] {
+  color: var(--color-accent);
+  opacity: 1;
+}
+
+/**
+ * The clock is the only type on this bar allowed to sit at full ink.
+ *
+ * Everything else in the system area is a glyph you glance at; the time is the one thing people
+ * actually read from across the room, and at 62% it loses that argument to the icons.
+ */
+.aura-taskbar-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  color: var(--color-text);
+  opacity: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The date's size, weight and ink come from `.aura-type-clock-date`. An element selector here
+   would out-specify that role class and silently win. */
+
+.aura-taskbar[data-position='left'] .aura-taskbar-clock,
+.aura-taskbar[data-position='right'] .aura-taskbar-clock {
+  align-items: center;
+}

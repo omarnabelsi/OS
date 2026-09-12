@@ -23,6 +23,15 @@
   --surface-tint: transparent;
   --surface-blur: 0px;
   /*
+   * What the tint is actually painted as. A flat wash of `--surface-tint` by default, but a
+   * surface with a real material - the folder's glass, say - replaces the whole fill here and
+   * stays on the ladder: it keeps its level's shadow, and the blur budget can still grant or
+   * refuse it a backdrop. Without this hook such a surface would have to write its own
+   * `background`, which out-specifies the state rules below and silently leaves the budget
+   * unable to turn its blur off.
+   */
+  --surface-fill: linear-gradient(var(--surface-tint), var(--surface-tint));
+  /*
    * What sits *under* the tint when there is no blur to supply a backdrop. Transparent is right
    * for a 6% tint - the field shows through and looks intentional - and wrong for a 72% one,
    * where the desktop icons showing faintly through a window read as a rendering fault.
@@ -84,7 +93,9 @@
 /* ---- the three ways to paint a surface ------------------------------------------------------ */
 
 .aura-surface[data-blur='live'] {
-  background-color: var(--surface-tint);
+  /* Transparent behind the fill: the blur is what supplies the backdrop. */
+  background-color: transparent;
+  background-image: var(--surface-fill);
   backdrop-filter: blur(var(--surface-blur));
   -webkit-backdrop-filter: blur(var(--surface-blur));
 }
@@ -96,8 +107,7 @@
  */
 .aura-surface[data-blur='snapshot'] {
   background-color: var(--surface-base);
-  background-image: linear-gradient(var(--surface-tint), var(--surface-tint)),
-    var(--surface-snapshot, none);
+  background-image: var(--surface-fill), var(--surface-snapshot, none);
   background-position: center;
   background-size: cover;
   background-attachment: fixed;
@@ -105,7 +115,7 @@
 
 .aura-surface[data-blur='off'] {
   background-color: var(--surface-base);
-  background-image: linear-gradient(var(--surface-tint), var(--surface-tint));
+  background-image: var(--surface-fill);
 }
 
 /**

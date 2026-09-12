@@ -104,9 +104,9 @@ partial theme still renders:
 | `tile` | `width` `aspect` `focusScale` `gap` `widthSmall` `widthMedium` `widthLarge` |
 | `desktop` | `cell` `gap` `iconSize` `labelSize` `labelMaxLines` `gridCellW` `gridCellH` `columnGap` `rowGap` |
 | `window` | `radius` `titleBarHeight` `controlSize` `controlRadius` `resizeGrab` `opacity` `titleAlign` |
-| `taskbar` | `edge` `align` `height` `iconSize` `radius` `margin` `size` `inset` |
+| `taskbar` | `edge` `align` `height` `iconSize` `radius` `margin` `size` `inset` `gap` `padding` `plateRadius` `border` |
 | `elevation` | `e1`-`e4`, each with `shadow` `surface` `blur`; `e4` also `scrim` |
-| `folder` | `shape` `tintAlpha` `artWidth` `artHeight` |
+| `folder` | `shape` `tintAlpha` `artWidth` `artHeight` `artHeightMax` `tabSlot` `iconSize` `glassTop` `glassBottom` `border` `sheen` `coverScrim` |
 | `font` | `family` `display`, and `weight.display` `weight.title` `weight.label` `weight.meta` `weight.section` |
 
 `tile.widthSmall/Medium/Large` back the tile-size setting: the chosen one is written to
@@ -176,6 +176,45 @@ than they look like they do: the type hierarchy is one family at five weights, a
 `src/styles/type.css` read nothing else, so shifting `font.weight.*` re-pitches every clock,
 label, title and section header at once. Sizes there are in `rem`, which is what makes the UI
 Scale setting move text.
+
+### Folder shapes are geometry, not code
+
+A folder's shape is the most visible thing it has, and it is theme data. Each entry in
+`folderShapes` may carry the geometry the desktop draws:
+
+```json
+{
+  "id": "capsule",
+  "asset": "assets/folders/capsule.svg",
+  "height": 104,
+  "radius": "56px",
+  "offsetTop": 24,
+  "tab": { "width": 84, "height": 16, "radius": "10px 10px 0 0" }
+}
+```
+
+`height` is the artwork's height in pixels at 1x; the width is `folder.artWidth`, shared by every
+shape so a row of mixed folders lines up. `radius` is the body's `border-radius`. `offsetTop`
+pushes a short shape down so its optical centre sits level with its taller neighbours - the
+bundled capsule uses 24. `tab` adds a tab above the body, as on a physical folder, and the body's
+top-left corner is usually squared off to meet it. Omit any of them and the shape falls back to a
+plain 152px body with 28px corners.
+
+Labels stay aligned across shapes whatever the heights, because the artwork sits in a fixed slot
+sized by `folder.artHeightMax` + `folder.tabSlot`. A shape taller than that slot overflows
+downwards rather than dragging its label up into the artwork - so raise those two together if a
+theme wants taller folders.
+
+`asset` is still required: it is the thumbnail the folder editor's shape picker shows, and it can
+depict a silhouette the geometry could not express.
+
+**The geometry is validated, and `radius` strictly.** Sizes must be plain numbers from 0 to 1024 -
+a 40,000px shape would push every other item off the desktop with no way back but editing the
+database. `radius` may contain lengths, percentages, `/` and spaces only: no parentheses, so no
+`url()`, `var()` or `calc()`, and no `;`, `:` or `}`. That is not fussiness - the value is written
+into a `style` attribute, and `layout.json` comes from a shared theme, so anything able to close
+one declaration and open another is an injection (docs/RISKS.md R5). A field that fails is
+dropped and the shape keeps rendering with the default for it; the theme still loads.
 
 ### Fonts and other files referenced from theme.css
 

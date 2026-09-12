@@ -19,8 +19,18 @@ import { describe, expect, it } from 'vitest';
 const STYLES = dirname(fileURLToPath(import.meta.url));
 const read = (name: string) => readFileSync(join(STYLES, name), 'utf8');
 
-const SHELL = read('shell.css');
 const ELEVATION = read('elevation.css');
+
+/**
+ * Every stylesheet that draws a raised thing.
+ *
+ * Checked together rather than just `shell.css`: the folder, the desktop and the taskbar all got
+ * their own files, and a rule that escapes the ladder is exactly as much of a problem in one of
+ * those as in the original.
+ */
+const SHEETS = ['shell.css', 'folder.css', 'desktop.css', 'taskbar.css'] as const;
+const COMPONENT_CSS = SHEETS.map(read).join('\n');
+const TASKBAR = read('taskbar.css');
 
 /** Every `box-shadow: ...;` value in a stylesheet, whitespace collapsed. */
 function shadows(css: string): string[] {
@@ -28,39 +38,54 @@ function shadows(css: string): string[] {
 }
 
 /**
- * A value that raises the element off the page, rather than drawing a line on it.
+ * A value that raises the element off the page, rather than drawing on it or glowing.
  *
- * A hairline is `inset`, or has no blur radius worth the name - `0 1px 0 <colour>`. Anything
- * with a real blur radius is a drop shadow and belongs to a level.
+ * Three things are allowed and are not elevation:
+ *  - `inset` strokes and focus rings, which are lines drawn *inside* the box;
+ *  - a hairline, which has no blur radius worth the name (`0 1px 0 <colour>`);
+ *  - a glow, which has no offset at all (`0 0 38px`) - a bloom around a focused thing is light,
+ *    not height, and the design asks for one on both the folder and the taskbar plate.
+ *
+ * A value that mentions an elevation token is on the ladder by definition, including when it
+ * composes something else alongside it - which is how the focus bloom keeps its level's shadow.
  */
 function isDropShadow(value: string): boolean {
-  return value
-    .split(/,(?![^(]*\))/)
-    .some((layer) => {
-      const part = layer.trim();
-      if (part === '' || part.startsWith('inset') || part.startsWith('var(--elevation')) return false;
-      const lengths = [...part.matchAll(/(-?[\d.]+)px/g)].map((m) => Number(m[1]));
-      // offset-x, offset-y, blur - a hairline has no third length, or a zero one.
-      return (lengths[2] ?? 0) > 2;
-    });
+  if (value.includes('var(--elevation')) return false;
+  return value.split(/,(?![^(]*\))/).some((layer) => {
+    const part = layer.trim();
+    if (part === '' || part.startsWith('inset')) return false;
+    const lengths = [...part.matchAll(/(-?[\d.]+)px/g)].map((m) => Number(m[1]));
+    const [offsetX = 0, offsetY = 0, blur = 0] = lengths;
+    if (blur <= 2) return false;
+    return offsetX !== 0 || offsetY !== 0;
+  });
 }
 
 describe('the elevation ladder', () => {
   it('owns every drop shadow', () => {
-    const offenders = shadows(SHELL).filter(isDropShadow);
+    const offenders = shadows(COMPONENT_CSS).filter(isDropShadow);
     expect(offenders).toEqual([]);
   });
 
-  it('still lets a taskbar edge draw its hairline alongside the level shadow', () => {
-    // Composed, not replaced: a more specific `box-shadow` would silently drop e2's depth.
-    expect(SHELL).toContain('box-shadow: var(--elevation-e2-shadow), 0 1px 0 var(--color-surface-strong);');
+  it('lets a focus bloom compose with the level shadow instead of replacing it', () => {
+    // A bare `box-shadow` on the focused folder would out-specify `.aura-surface-e3` and
+    // silently drop the lift that focus had just earned.
+    expect(read('folder.css')).toContain('box-shadow: var(--elevation-e3-shadow), 0 0 38px');
+  });
+
+  it('gives the detached taskbar no shadow of its own', () => {
+    // It is a floating pill with no docked edge, so its depth is entirely level e2's. The old
+    // per-edge hairlines went with the dock they belonged to.
+    expect(shadows(TASKBAR).filter(isDropShadow)).toEqual([]);
+    expect(TASKBAR).not.toContain('--elevation-e2-shadow');
   });
 
   it('is the only place a backdrop-filter is written', () => {
-    // One exception, and it is deliberate: the rule that turns the small decorative blurs *off*
-    // when a theme says `blur.surface: 0`.
-    const inShell = [...SHELL.matchAll(/backdrop-filter:\s*([^;]+);/g)].map((m) => m[1]?.trim());
-    expect(inShell.filter((value) => value !== 'none')).toEqual([]);
+    // The components get their blur from the ladder, which is what lets the budget refuse it.
+    const written = [...COMPONENT_CSS.matchAll(/backdrop-filter:\s*([^;]+);/g)].map((m) =>
+      m[1]?.trim(),
+    );
+    expect(written.filter((value) => value !== 'none')).toEqual([]);
   });
 
   it('defines all five levels', () => {

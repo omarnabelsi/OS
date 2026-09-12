@@ -14,9 +14,21 @@
     ]
   },
   "folderShapes": [
-    { "id": "binder", "asset": "assets/folders/binder.svg" },
-    { "id": "envelope", "asset": "assets/folders/envelope.svg" },
-    { "id": "crate", "asset": "assets/folders/crate.svg" }
+    {
+      "id": "binder",
+      "asset": "assets/folders/binder.svg",
+      "height": 148,
+      "radius": "2px 4px 4px 4px",
+      "tab": { "width": 104, "height": 14, "radius": "3px 3px 0 0" }
+    },
+    {
+      "id": "envelope",
+      "asset": "assets/folders/envelope.svg",
+      "height": 112,
+      "radius": "3px",
+      "offsetTop": 18
+    },
+    { "id": "crate", "asset": "assets/folders/crate.svg", "height": 148, "radius": "3px" }
   ],
   "home": {
     "rows": [

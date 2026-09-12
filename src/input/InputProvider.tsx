@@ -49,6 +49,7 @@ export function InputProvider({ children }: { children: ReactNode }): React.JSX.
   const prevScreen = useUiStore((s) => s.prevScreen);
   const screen = useUiStore((s) => s.screen);
   const setScreen = useUiStore((s) => s.setScreen);
+  const toggleSnapGrid = useUiStore((s) => s.toggleSnapGrid);
 
   // The dispatcher is rebuilt when its dependencies change; input sources read it through a ref
   // so their listeners and rAF loop are installed exactly once.
@@ -121,13 +122,28 @@ export function InputProvider({ children }: { children: ReactNode }): React.JSX.
           play('select');
           void toggleShellFullscreen();
           return;
+        case 'toggleSnapGrid':
+          // Silent: a developer overlay should not play the selection sound.
+          toggleSnapGrid();
+          return;
         case 'favourite':
         case 'search':
           // Handled by the focused screen through its own key handling in V1.
           return;
       }
     },
-    [move, activate, play, overlay, setOverlay, screen, setScreen, nextScreen, prevScreen],
+    [
+      move,
+      activate,
+      play,
+      overlay,
+      setOverlay,
+      screen,
+      setScreen,
+      nextScreen,
+      prevScreen,
+      toggleSnapGrid,
+    ],
   );
 
   const dispatchRef = useRef(dispatch);

@@ -1,24 +1,41 @@
 /**
- * The desktop: a wallpaper with items the user placed on it.
+ * The desktop: a free-placement surface with items the user put where they wanted them.
  *
  * This component owns the only conversion between stored **cells** and screen **pixels**. The
  * store and the core never see a pixel, which is what lets an arrangement made at 1080p survive
- * a 4K monitor - the cell size changes and the stored positions do not.
+ * a 4K monitor: the strides change and the stored positions do not.
  *
- * Drag lifecycle: `DesktopIcon` reports pointer deltas, the surface previews the landing cell,
- * and only the drop writes - one `update_desktop_item` per gesture, never one per frame.
+ * The grid is not square. A folder is 216 wide and up to 168 tall with its label, so the cell is
+ * 259 x 240 including gaps - seven of which span 1920 inside a 64px margin. The strides come from
+ * theme tokens, read here rather than hard-coded, so a theme can loosen or tighten the whole
+ * composition without a code change.
+ *
+ * Drag lifecycle: an item reports pointer deltas, the surface previews the landing cell, and only
+ * the drop writes - one `update_desktop_item` per gesture, never one per frame.
  */
 
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { DesktopItem } from '@/bridge';
+import { useFocus } from '@/focus';
 import { useDesktopStore, useLibraryStore, useUiStore } from '@/store';
 import { useTheme } from '@/theme';
 import { useWmStore } from '@/wm';
 
 import type { IconName } from '../Icon';
 import { DesktopIcon } from './DesktopIcon';
-import { cellToPixels, gridBounds, pixelsToCell, resolveDrop } from './grid';
+import { Folder } from './Folder';
+import {
+  cellSize,
+  cellToPx,
+  desktopBounds,
+  placeForDisplay,
+  pxToCell,
+  resolveDrop,
+  type DesktopMetrics,
+} from './grid';
+import { useDragGesture } from './useDragGesture';
+import { Widget } from './widgets';
 
 interface DragState {
   item: DesktopItem;
@@ -28,59 +45,122 @@ interface DragState {
   target: { x: number; y: number };
 }
 
+/** The design's grid, used until the tokens have been read. */
+const FALLBACK = { strideX: 259, strideY: 240, gapX: 24, gapY: 40 };
+
+/**
+ * Read the grid out of the theme's tokens.
+ *
+ * Computed style rather than the token JSON, because a theme's own `theme.css` may override these
+ * and the browser is the only thing that knows the final value.
+ */
+function readGrid(element: HTMLElement): typeof FALLBACK {
+  const styles = getComputedStyle(element);
+  const num = (name: string, fallback: number) => {
+    const value = Number.parseFloat(styles.getPropertyValue(name));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+  return {
+    strideX: num('--desktop-grid-cell-w', FALLBACK.strideX),
+    strideY: num('--desktop-grid-cell-h', FALLBACK.strideY),
+    gapX: num('--desktop-column-gap', FALLBACK.gapX),
+    gapY: num('--desktop-row-gap', FALLBACK.gapY),
+  };
+}
+
 export function DesktopSurface(): React.JSX.Element {
   const { bundle } = useTheme();
   const desktops = useDesktopStore((s) => s.desktops);
   const activeId = useDesktopStore((s) => s.activeId);
   const items = useDesktopStore((s) => s.items);
   const loaded = useDesktopStore((s) => s.loaded);
+  const folders = useDesktopStore((s) => s.folders);
   const folderById = useDesktopStore((s) => s.folderById);
+  const folderContents = useDesktopStore((s) => s.folderContents);
   const moveItem = useDesktopStore((s) => s.moveItem);
   const byId = useLibraryStore((s) => s.byId);
+  const libraryItems = useLibraryStore((s) => s.items);
   const launch = useLibraryStore((s) => s.launch);
   const setFocusedItem = useUiStore((s) => s.setFocusedItem);
+  const showSnapGrid = useUiStore((s) => s.showSnapGrid);
   const openWindow = useWmStore((s) => s.open);
+  // Peers dim only for focus the user placed with the D-pad or keyboard. The engine's own
+  // placement on boot, and a pointer hovering, leave the desktop at rest - see `FocusSource`.
+  const { focusedId: engineFocusedId, focusSource } = useFocus();
+  const focusedId = focusSource === 'nav' ? engineFocusedId : null;
 
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const [grid, setGrid] = useState(FALLBACK);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
 
   const desktop = desktops.find((d) => d.id === activeId);
-  // The theme's grid is the fallback for a desktop that has not been given its own.
-  const themeGrid = bundle?.layout?.desktop?.grid;
-  const grid = desktop?.grid ?? {
-    cell: themeGrid?.cell ?? 96,
-    gap: themeGrid?.gap ?? 16,
-    snap: themeGrid?.snap ?? true,
-    autoArrange: false,
-  };
+  // Snapping is the desktop's own setting; the strides are the theme's.
+  const snap = desktop?.grid.snap ?? bundle?.layout?.desktop?.grid?.snap ?? true;
 
-  /*
-   * The desktop deliberately does **not** claim a focus scope yet.
-   *
-   * Scoping is the answer to overlapping windows (docs/RISKS.md R11), but it also seals the pool
-   * off: scoping to `desktop` today would make the nav bar unreachable by D-pad, because the
-   * action that moves focus *between* scopes arrives with the window manager in phase 3. A flat
-   * surface needs no scope, so it gets none until the thing that needs it exists.
-   *
-   * Focus still lands here rather than on the nav bar: `FocusProvider` re-homes auto-placed
-   * focus off chrome onto whatever surface is showing.
-   */
-
-  // Measured rather than assumed: the number of cells that fit decides where a drop can land.
+  // Measured rather than assumed: how many cells fit decides where a drop can land.
   useLayoutEffect(() => {
     const element = surfaceRef.current;
     if (!element) return;
-    const measure = () =>
+    const measure = () => {
       setSize({ width: element.clientWidth, height: element.clientHeight });
+      setGrid(readGrid(element));
+    };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [bundle?.tokens]);
 
-  const bounds = gridBounds(grid, size.width, size.height);
+  const metrics = useMemo<DesktopMetrics>(() => {
+    const bounds = desktopBounds(grid, size.width, size.height);
+    return { ...grid, ...bounds, snap };
+  }, [grid, size.width, size.height, snap]);
+
+  const bounds = { columns: metrics.columns, rows: metrics.rows };
+  const cell = cellSize(metrics);
+
+  // Where each item is *drawn*: an item stored off the edge of a smaller display is pulled into
+  // view without its stored cell being touched. See `placeForDisplay`.
+  const placed = useMemo(
+    () => placeForDisplay(items, bounds),
+    [items, bounds.columns, bounds.rows],
+  );
+
+  /*
+   * How many entries each folder holds, for the meta line under its label.
+   *
+   * One query per folder, once - not per render and not per frame. Re-run when the library
+   * changes, because a smart folder's count is a view of it: scanning in twenty games has to
+   * show up under "Games" without a restart.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const wanted = folders.filter((f) => items.some((i) => i.targetId === f.id));
+    if (wanted.length === 0) return;
+
+    void Promise.all(
+      wanted.map(async (folder) => {
+        try {
+          return [folder.id, (await folderContents(folder.id)).length] as const;
+        } catch {
+          // A folder whose contents cannot be read shows no count rather than a zero.
+          return [folder.id, null] as const;
+        }
+      }),
+    ).then((pairs) => {
+      if (cancelled) return;
+      setCounts(
+        Object.fromEntries(pairs.filter((p): p is readonly [string, number] => p[1] !== null)),
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [folders, items, folderContents, libraryItems]);
 
   const onDragStart = useCallback((item: DesktopItem) => {
     setDrag({ item, dx: 0, dy: 0, target: { x: item.x, y: item.y } });
@@ -91,16 +171,16 @@ export function DesktopSurface(): React.JSX.Element {
       setDrag((current) => {
         if (!current) return current;
         const { item } = current;
-        // Where the icon's top-left now sits, in pixels, then back to a cell.
-        const px = cellToPixels(grid.cell, grid.gap, item.x) + dx;
-        const py = cellToPixels(grid.cell, grid.gap, item.y) + dy;
-        const desired = grid.snap
-          ? { x: pixelsToCell(grid.cell, grid.gap, px), y: pixelsToCell(grid.cell, grid.gap, py) }
+        // Where the item's top-left now sits, in pixels, then back to a cell.
+        const px = cellToPx(metrics.strideX, item.x) + dx;
+        const py = cellToPx(metrics.strideY, item.y) + dy;
+        const desired = metrics.snap
+          ? { x: pxToCell(metrics.strideX, px), y: pxToCell(metrics.strideY, py) }
           : { x: item.x, y: item.y };
         return { ...current, dx, dy, target: resolveDrop(item, desired, items, bounds) };
       });
     },
-    [grid.cell, grid.gap, grid.snap, items, bounds],
+    [metrics.strideX, metrics.strideY, metrics.snap, items, bounds],
   );
 
   const onDragEnd = useCallback(() => {
@@ -156,31 +236,59 @@ export function DesktopSurface(): React.JSX.Element {
     );
   }
 
+  /** An item's box, in pixels, at the cell it is *drawn* in. Spans include the gaps they swallow. */
+  const boxStyle = (item: DesktopItem): React.CSSProperties => {
+    const at = placed.get(item.id) ?? { x: item.x, y: item.y };
+    return {
+      transform: `translate3d(${cellToPx(metrics.strideX, at.x)}px, ${cellToPx(
+        metrics.strideY,
+        at.y,
+      )}px, 0)`,
+      width: cell.width + (item.width - 1) * metrics.strideX,
+      height: cell.height + (item.height - 1) * metrics.strideY,
+    };
+  };
+
   return (
     <div
-      ref={surfaceRef}
       className="aura-desktop"
-      data-snap={grid.snap || undefined}
+      data-snap={metrics.snap || undefined}
+      // Peers dim while a desktop item holds focus - see folder.css.
+      data-focus-within={focusedId?.startsWith('desktop:') || undefined}
       style={
         {
-          '--desktop-cell': `${grid.cell}px`,
-          '--desktop-gap': `${grid.gap}px`,
+          '--desktop-stride-x': `${metrics.strideX}px`,
+          '--desktop-stride-y': `${metrics.strideY}px`,
         } as React.CSSProperties
       }
     >
+      {/*
+        The placeable area, inset by the screen margin, and what gets measured. An absolutely
+        positioned child is laid out against the padding box, so padding on `.aura-desktop` would
+        not have inset anything - and `clientWidth` would have counted the margin as usable, so
+        the grid would have believed two more columns fit than do.
+      */}
+      <div ref={surfaceRef} className="aura-desktop-field">
+      {/*
+        The snap grid (Ctrl+Shift+G). Drawn from the same strides the drop maths uses, so if the
+        lines and the landing cell ever disagree, the overlay is telling the truth about the bug.
+      */}
+      {showSnapGrid ? (
+        <div
+          className="aura-desktop-snap"
+          aria-hidden="true"
+          style={{
+            width: metrics.columns * metrics.strideX - metrics.gapX,
+            height: metrics.rows * metrics.strideY - metrics.gapY,
+          }}
+        />
+      ) : null}
+
       {/* The cell the dragged item would land in. Purely a preview; no state is written. */}
       {drag ? (
         <div
           className="aura-desktop-drop"
-          style={{
-            transform: `translate3d(${cellToPixels(grid.cell, grid.gap, drag.target.x)}px, ${cellToPixels(
-              grid.cell,
-              grid.gap,
-              drag.target.y,
-            )}px, 0)`,
-            width: `calc(var(--desktop-cell) * ${drag.item.width} + var(--desktop-gap) * ${drag.item.width - 1})`,
-            height: `calc(var(--desktop-cell) * ${drag.item.height} + var(--desktop-gap) * ${drag.item.height - 1})`,
-          }}
+          style={boxStyle({ ...drag.item, x: drag.target.x, y: drag.target.y })}
         />
       ) : null}
 
@@ -188,30 +296,92 @@ export function DesktopSurface(): React.JSX.Element {
         <div
           key={item.id}
           className="aura-desktop-cell"
+          data-kind={item.kind}
           style={{
-            transform: `translate3d(${cellToPixels(grid.cell, grid.gap, item.x)}px, ${cellToPixels(
-              grid.cell,
-              grid.gap,
-              item.y,
-            )}px, 0)`,
-            width: `calc(var(--desktop-cell) * ${item.width} + var(--desktop-gap) * ${item.width - 1})`,
-            height: `calc(var(--desktop-cell) * ${item.height} + var(--desktop-gap) * ${item.height - 1})`,
-            // The dragged icon rides above its neighbours.
+            ...boxStyle(item),
+            // The dragged item rides above its neighbours.
             zIndex: drag?.item.id === item.id ? 2 : undefined,
           }}
         >
-          <DesktopIcon
-            item={item}
-            folder={item.kind === 'folder' ? folderById(item.targetId) : undefined}
-            entry={item.kind === 'shortcut' && item.targetId ? byId[item.targetId] : undefined}
-            dragOffset={drag?.item.id === item.id ? { dx: drag.dx, dy: drag.dy } : null}
-            onActivate={() => activate(item)}
-            onDragStart={onDragStart}
-            onDragMove={onDragMove}
-            onDragEnd={onDragEnd}
-          />
+          {item.kind === 'folder' ? (
+            <Folder
+              item={item}
+              folder={folderById(item.targetId)}
+              count={item.targetId ? (counts[item.targetId] ?? null) : null}
+              dragOffset={drag?.item.id === item.id ? { dx: drag.dx, dy: drag.dy } : null}
+              onActivate={() => activate(item)}
+              onDragStart={onDragStart}
+              onDragMove={onDragMove}
+              onDragEnd={onDragEnd}
+            />
+          ) : item.kind === 'widget' ? (
+            <DesktopWidget
+              item={item}
+              dragOffset={drag?.item.id === item.id ? { dx: drag.dx, dy: drag.dy } : null}
+              onDragStart={onDragStart}
+              onDragMove={onDragMove}
+              onDragEnd={onDragEnd}
+            />
+          ) : (
+            <DesktopIcon
+              item={item}
+              folder={undefined}
+              entry={item.targetId ? byId[item.targetId] : undefined}
+              dragOffset={drag?.item.id === item.id ? { dx: drag.dx, dy: drag.dy } : null}
+              onActivate={() => activate(item)}
+              onDragStart={onDragStart}
+              onDragMove={onDragMove}
+              onDragEnd={onDragEnd}
+            />
+          )}
         </div>
       ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A widget in a cell: draggable like everything else, but not a focus stop.
+ *
+ * Deliberately not focusable. A widget has nothing to activate, so a D-pad stop on the clock
+ * would be a dead end between two folders - and "the D-pad moves between folders predictably" is
+ * worth more than being able to highlight a clock. The pointer can still move it.
+ */
+function DesktopWidget({
+  item,
+  dragOffset,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: {
+  item: DesktopItem;
+  dragOffset: { dx: number; dy: number } | null;
+  onDragStart(item: DesktopItem, pointerId: number): void;
+  onDragMove(dx: number, dy: number): void;
+  onDragEnd(): void;
+}): React.JSX.Element {
+  const gesture = useDragGesture({
+    item,
+    // Nothing to activate: a click on a widget is a click on whatever it drew.
+    onActivate: () => {},
+    onDragStart,
+    onDragMove,
+    onDragEnd,
+  });
+
+  return (
+    <div
+      className="aura-desktop-widget"
+      data-dragging={gesture.dragging || undefined}
+      style={
+        dragOffset
+          ? { transform: `translate3d(${dragOffset.dx}px, ${dragOffset.dy}px, 0)` }
+          : undefined
+      }
+      {...gesture.handlers}
+    >
+      <Widget id={item.targetId} />
     </div>
   );
 }

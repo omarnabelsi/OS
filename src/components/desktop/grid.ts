@@ -27,6 +27,74 @@ export interface Bounds {
   rows: number;
 }
 
+/**
+ * The desktop's grid is deliberately **not** square.
+ *
+ * A folder is 216 wide and up to 168 tall with its label under it, so a square cell would either
+ * waste a band of space beside every folder or crop the tall shapes. The design's cell is
+ * 259 x 240 including its gaps - seven of them span 1920 with a 64px margin either side, which is
+ * where the 259 comes from.
+ */
+export const DESKTOP_COLUMNS = 7;
+
+/**
+ * Pixel geometry of the desktop grid.
+ *
+ * `strideX`/`strideY` are the *effective* cell - content plus the gap after it - because that is
+ * the number a cell index multiplies by. The content box is the stride less the gap.
+ */
+export interface DesktopMetrics {
+  strideX: number;
+  strideY: number;
+  gapX: number;
+  gapY: number;
+  columns: number;
+  rows: number;
+  snap: boolean;
+}
+
+/** Pixel offset of a cell along one axis. */
+export function cellToPx(stride: number, index: number): number {
+  return index * stride;
+}
+
+/** The cell a pixel offset falls in. Rounds, so a drag lands where it was aimed. */
+export function pxToCell(stride: number, px: number): number {
+  if (stride <= 0) return 0;
+  return Math.round(px / stride);
+}
+
+/** The content box of one cell, which is the stride less the gap that follows it. */
+export function cellSize(metrics: DesktopMetrics): { width: number; height: number } {
+  return {
+    width: Math.max(0, metrics.strideX - metrics.gapX),
+    height: Math.max(0, metrics.strideY - metrics.gapY),
+  };
+}
+
+/**
+ * How many cells fit, given the strides.
+ *
+ * Columns are capped at `DESKTOP_COLUMNS`: the design is a seven-column composition, and letting
+ * a wide monitor add an eighth would spread the same items thinner rather than better. Rows are
+ * whatever fits, because vertical space is what actually varies.
+ *
+ * The final gap does not need to fit - an item in the last column has nothing after it - so the
+ * gap is added back before dividing.
+ */
+export function desktopBounds(
+  metrics: Pick<DesktopMetrics, 'strideX' | 'strideY' | 'gapX' | 'gapY'>,
+  width: number,
+  height: number,
+): Bounds {
+  const fitsX = metrics.strideX > 0 ? Math.floor((width + metrics.gapX) / metrics.strideX) : 1;
+  const fitsY = metrics.strideY > 0 ? Math.floor((height + metrics.gapY) / metrics.strideY) : 1;
+  return {
+    columns: Math.max(1, Math.min(DESKTOP_COLUMNS, fitsX)),
+    rows: Math.max(1, fitsY),
+  };
+}
+
 /** How many whole cells fit in a surface of this pixel size. */
 export function gridBounds(grid: GridSettings, width: number, height: number): Bounds {
   const stride = grid.cell + grid.gap;
@@ -58,6 +126,79 @@ export function overlaps(
   return (
     a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
   );
+}
+
+/**
+ * Where each item should be *drawn*, which is not always where it is stored.
+ *
+ * The grid's cells are a fixed size, so a smaller display simply fits fewer of them: the design
+ * is a seven-column composition at 1920, and at 1366 only four columns and two rows are on
+ * screen. An item stored outside that - the seeded clock at column five, say - would not be
+ * visible at all, and nothing would tell anyone it was there.
+ *
+ * So an out-of-bounds item is pulled to the nearest free cell **for display only**. The stored
+ * cell is never touched, which is the entire reason positions are cells rather than pixels:
+ * plug the larger monitor back in and the intended composition returns exactly as it was.
+ * Rewriting the stored position to "fix" a small screen would destroy that, and the user would
+ * never get their arrangement back.
+ *
+ * Items that already fit claim their cells first, so a displaced one fills a real gap rather
+ * than landing on a neighbour that was where it belonged all along.
+ */
+export function placeForDisplay(
+  items: DesktopItem[],
+  bounds: Bounds,
+): Map<string, { x: number; y: number }> {
+  const out = new Map<string, { x: number; y: number }>();
+  const taken: DesktopItem[] = [];
+
+  const fits = (i: DesktopItem) =>
+    i.x >= 0 && i.y >= 0 && i.x + i.width <= bounds.columns && i.y + i.height <= bounds.rows;
+
+  for (const item of items) {
+    if (!fits(item)) continue;
+    out.set(item.id, { x: item.x, y: item.y });
+    taken.push(item);
+  }
+
+  for (const item of items) {
+    if (fits(item)) continue;
+    const span = { width: item.width, height: item.height };
+    let pos = resolveDrop(item, clampToBounds(item.x, item.y, span, bounds), taken, bounds);
+
+    /*
+     * `resolveDrop` gives up by leaving the item where it was, which is right for a drag - a drop
+     * with nowhere to go should not teleport the thing you were holding. Here it is wrong: where
+     * it was is off the screen, which is the problem being solved. Its spiral can also miss a
+     * free cell that exists, because the rings are clamped and a tight grid packs awkwardly. So
+     * fall back to a plain scan, which finds a space if there is one at all.
+     */
+    if (!fits({ ...item, ...pos })) {
+      const free = firstFreeCell(span, taken, bounds);
+      // Still nothing: the display genuinely has no room, and the stored cell is the honest
+      // answer. The item is off-screen, but its position is still what the user arranged.
+      pos = free ?? pos;
+    }
+
+    out.set(item.id, pos);
+    taken.push({ ...item, ...pos });
+  }
+
+  return out;
+}
+
+/** The first cell, in reading order, where `span` fits without touching anything in `taken`. */
+function firstFreeCell(
+  span: { width: number; height: number },
+  taken: Array<{ x: number; y: number; width: number; height: number }>,
+  bounds: Bounds,
+): { x: number; y: number } | null {
+  for (let y = 0; y + span.height <= bounds.rows; y++) {
+    for (let x = 0; x + span.width <= bounds.columns; x++) {
+      if (!taken.some((t) => overlaps({ ...span, x, y }, t))) return { x, y };
+    }
+  }
+  return null;
 }
 
 /**

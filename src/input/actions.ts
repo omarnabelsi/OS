@@ -32,7 +32,9 @@ export type NavAction =
   /** Hop between the desktop and the focused window (and, from phase 5, the taskbar). */
   | 'cycleRegion'
   /** F11: fullscreen on and off, as in every Windows browser and most games. */
-  | 'toggleFullscreen';
+  | 'toggleFullscreen'
+  /** Ctrl+Shift+G: show the desktop's snap grid. A tool for placing items, not a setting. */
+  | 'toggleSnapGrid';
 
 /** Directions auto-repeat when held; discrete actions fire once per press. */
 export const REPEATABLE: ReadonlySet<NavAction> = new Set<NavAction>(['up', 'down', 'left', 'right']);
@@ -71,6 +73,15 @@ export function actionForKey(event: KeyLike): NavAction | null {
   }
   if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'F6') {
     return 'cycleRegion';
+  }
+  /*
+   * A chord rather than a bare letter. The snap grid is a developer tool, and `g` alone would
+   * fire while someone was typing into the folder editor - the letter keys are only safe for
+   * navigation because the shell ignores them in a text field, and a debug overlay is not worth
+   * that exception.
+   */
+  if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'g') {
+    return 'toggleSnapGrid';
   }
 
   // Every other modified chord stays with the OS or the browser.

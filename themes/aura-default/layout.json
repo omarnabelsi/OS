@@ -14,9 +14,21 @@
     ]
   },
   "folderShapes": [
-    { "id": "rounded", "asset": "assets/folders/rounded.svg" },
-    { "id": "capsule", "asset": "assets/folders/capsule.svg" },
-    { "id": "tab", "asset": "assets/folders/tab.svg" }
+    { "id": "rounded", "asset": "assets/folders/rounded.svg", "height": 152, "radius": "28px" },
+    {
+      "id": "capsule",
+      "asset": "assets/folders/capsule.svg",
+      "height": 104,
+      "radius": "56px",
+      "offsetTop": 24
+    },
+    {
+      "id": "tab",
+      "asset": "assets/folders/tab.svg",
+      "height": 152,
+      "radius": "6px 28px 28px 28px",
+      "tab": { "width": 84, "height": 16, "radius": "10px 10px 0 0" }
+    }
   ],
   "home": {
     "rows": [

@@ -10,6 +10,65 @@ events or fields) must be listed under **Changed** or **Removed** with both mirr
 
 V1 "The Face" skeleton.
 
+### Added - the design system
+
+- **Type foundation.** `aura-default` bundles Manrope (six `woff2` subsets, 73 KB, OFL). Ten type
+  roles in `src/styles/type.css`, sized in `rem` so UI Scale moves them and weighted from
+  `font.weight.*` so a theme re-pitches the whole hierarchy without touching a component. Theme
+  tokens now nest three levels deep, and `theme.css` may reference the theme's own files with a
+  relative `url(...)`, validated in both validators and rewritten at injection time.
+- **Elevation ladder and blur budget.** Five levels consumed through a `<Surface level>` primitive.
+  At most three surfaces run a live `backdrop-filter` at once; the rest fall back to a flat fill,
+  and a machine that cannot hold the frame rate falls back to one shared 2 fps snapshot of the
+  field. A `blurMode` setting (`auto` / `full` / `off`) overrides the probe, and a theme's
+  `blur.surface: 0` overrides everything.
+- **Aurora background field.** Four layers - two drifts on 68 s and 104 s so the pair does not
+  repeat for nearly an hour, a vignette, and browser-generated `feTurbulence` grain that never
+  takes a click. It is the ground under every wallpaper, so a failed shader leaves the design
+  rather than a hole; the WebGL shaders remain selectable by name.
+- **The folder.** `<Folder>` with three shapes, live tint, cover art, label and meta, and the full
+  rest / hover / focus / press machine - including peers dimming to 68% while one folder is
+  focused. Shape geometry (`height`, `radius`, `offsetTop`, `tab`) is declared per shape in a
+  theme's `layout.json`, so a fourth shape is theme data rather than a branch in a component.
+- **The desktop surface.** A free-placement seven-column grid with a 259 x 240 cell, positions
+  stored in cells so an arrangement made at 1080p survives a 4K monitor, a clock widget and a
+  now-playing widget placed on the same grid as everything else, and a debug snap-grid overlay on
+  `Ctrl+Shift+G`.
+- **The taskbar.** A detached floating pill: 76px tall, 28px corners, 28px off the screen edge,
+  56px icon plates with a 44px hit-area floor, distinct focused and running indicators, and
+  tooltips after a 400ms dwell or immediately on focus. One component and one rule set serve all
+  four edges - moving the bar is a change of anchor, not a second layout.
+
+### Fixed - navigation
+
+- **The D-pad could not get back to the desktop from the taskbar.** Down from the bottom folder
+  reached the taskbar's Home button, but Up from there picked whatever was best aligned above the
+  *button* - the nav bar - and skipped every folder. A move that crosses from one focus group into
+  another now remembers where it came from, and the opposite press retraces it exactly
+  (`src/focus/returnPath.ts`). Inside a group the geometry still decides, and "back" is forgotten
+  as soon as focus moves on from where the crossing landed.
+- **Focus showed when nobody had asked for it, and hover could never be seen.** Mouse and pad
+  share one focus, and hovering moves it - so every hover drew the full focus treatment, the
+  folder's hover state and the taskbar's 400ms tooltip dwell never appeared, and on boot the
+  engine's own placement lit up the first folder and dimmed every other one. The engine now
+  records what placed focus (`nav`, `pointer` or `auto`), and `useFocusable` returns `visible`,
+  true only for D-pad or keyboard focus - `:focus-visible`'s rule. The desktop is at rest until the
+  pad is used; its first press reveals where focus is instead of moving past it; a press with
+  nowhere to go still reveals an unseen focus; and closing a window with the pad keeps the ring.
+- **The first-run desktop did not fit its own reference display.** Four folders seeded in a column
+  needed four rows, and 1080p has three, so the last one was pulled out of place on the very first
+  launch. They are seeded two by two, and a test holds the whole first-run desktop to a 7 x 3 grid
+  with nothing overlapping.
+
+### Changed - IPC contract
+
+- `Settings` gains `blurMode` (`auto` | `full` | `off`).
+- `SystemStatus` gains `epochMs` and `utcOffsetMinutes`. The clock now comes from the host rather
+  than `new Date()` - as an *anchor*, not a tick: the UI advances it from a monotonic clock
+  between the status polls it was already making and re-anchors on each one, so the shell shows
+  the time and zone Windows reports without a round trip per second. Both mirrors and
+  [docs/IPC.md](docs/IPC.md) updated.
+
 ### Added
 
 - Cargo workspace with two crates: `aura-shell` (`src-tauri/`, Tauri 2 host + IPC bridge) and
