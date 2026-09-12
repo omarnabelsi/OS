@@ -47,6 +47,7 @@ export function Shell(): React.JSX.Element {
   const loadSettings = useSettingsStore((s) => s.load);
   const reduceMotion = useSettingsStore((s) => s.settings?.reduceMotion ?? false);
   const taskbarPosition = useSettingsStore((s) => s.settings?.taskbarPosition ?? 'bottom');
+  const windowFocused = useWmStore((s) => s.focusedId !== null);
   const libraryError = useLibraryStore((s) => s.error);
   const pushToast = useUiStore((s) => s.pushToast);
 
@@ -139,7 +140,17 @@ export function Shell(): React.JSX.Element {
         <div className="aura-frame">
           <NavBar />
 
-          <main className="aura-main" data-surface={screen === 'home' || undefined}>
+          {/*
+            `data-window-focused` is what blurs and dims the screen behind a focused window
+            (window.css). It lives here because the filter belongs on the screen slot, which is a
+            sibling of the window layer - blurring the desktop from inside the desktop would
+            either blur the windows too or need the desktop to know a window manager exists.
+          */}
+          <main
+            className="aura-main"
+            data-surface={screen === 'home' || undefined}
+            data-window-focused={windowFocused || undefined}
+          >
             <AnimatePresence mode="wait">
               <motion.div
                 key={screen}

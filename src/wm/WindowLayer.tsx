@@ -69,7 +69,13 @@ export function WindowLayer({ renderers }: WindowLayerProps): React.JSX.Element 
   const preview = snapPreview ? rectForSnap(snapPreview, bounds) : null;
 
   return (
-    <div ref={layerRef} className="aura-window-layer" data-busy={windows.length > 0 || undefined}>
+    <div
+      ref={layerRef}
+      className="aura-window-layer"
+      data-busy={windows.length > 0 || undefined}
+      // Draws the scrim that separates a focused window from the desktop it grew out of.
+      data-focused-window={focusedId ? true : undefined}
+    >
       {/* Where a dragged window would land. Positioned relative to the layer, hence the offset. */}
       {preview ? (
         <div

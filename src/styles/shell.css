@@ -498,7 +498,13 @@
   border-radius: var(--radius-tile);
   overflow: hidden;
   background: var(--color-surface);
-  box-shadow: inset 0 0 0 1px var(--color-surface-strong);
+  /* Level e1 - a tile is the lowest raised thing in a window. The inset is a stroke, not depth. */
+  box-shadow: inset 0 0 0 1px var(--color-surface-strong), var(--elevation-e1-shadow);
+  transition:
+    transform var(--duration-fast) var(--easing-standard),
+    opacity var(--duration-fast) var(--easing-standard),
+    box-shadow var(--duration-base) var(--easing-emphasized),
+    outline-color var(--duration-base) var(--easing-emphasized);
 }
 
 .aura-tile-art img {
@@ -506,6 +512,36 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/*
+ * Hover and press are on the artwork, never on the wrapper.
+ *
+ * The wrapper's transform is animated by framer-motion for the focus scale, and a CSS transform
+ * on the same element is overwritten by it on every frame - so these two states would flicker or
+ * simply never appear.
+ */
+.aura-tile-wrap:not([data-focused]) .aura-tile:hover .aura-tile-art {
+  transform: translateY(-2px) scale(1.03);
+}
+
+.aura-tile:active .aura-tile-art {
+  transform: scale(0.99);
+  opacity: 0.92;
+}
+
+/* Focus: the white ring, cyan light around it, and the label at full weight. */
+.aura-tile-wrap[data-focused] .aura-tile-art {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  box-shadow:
+    inset 0 0 0 1px var(--color-surface-strong),
+    var(--elevation-e1-shadow),
+    0 0 34px var(--tile-bloom, color-mix(in srgb, var(--color-accent) 45%, transparent));
+}
+
+.aura-tile-wrap[data-focused] .aura-tile-label {
+  font-weight: var(--font-weight-section, 700);
 }
 
 /*
@@ -642,7 +678,7 @@
 
 /* ---- folder glyph ------------------------------------------------------------------------- */
 
-.aura-folder-glyph {
+.aura-glyph {
   position: relative;
   display: grid;
   place-items: center;
@@ -654,7 +690,7 @@
  * The theme's SVG is used as a mask, not an <img>, so `--folder-tint` colours it. A theme can
  * therefore ship one flat silhouette per shape instead of one file per colour.
  */
-.aura-folder-shape {
+.aura-glyph-shape {
   position: absolute;
   inset: 0;
   background: var(--folder-tint, var(--color-accent));
@@ -667,13 +703,13 @@
 }
 
 /* No shape declared, or the theme's asset was rejected: a plain rounded plate still reads. */
-.aura-folder-shape[data-fallback] {
+.aura-glyph-shape[data-fallback] {
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--folder-tint, var(--color-accent)) 30%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--folder-tint, var(--color-accent)) 55%, transparent);
 }
 
-.aura-folder-icon {
+.aura-glyph-icon {
   position: relative;
   display: grid;
   place-items: center;
@@ -682,7 +718,7 @@
   mix-blend-mode: normal;
 }
 
-.aura-folder-cover {
+.aura-glyph-cover {
   position: relative;
   width: 72%;
   height: 72%;
@@ -692,150 +728,9 @@
 
 /* ---- windows ----------------------------------------------------------------------------------
  *
- * Every window is a DOM element in the one webview. The layer is the area windows are
- * constrained to and that snapping divides up; it is measured, not assumed.
+ * The layer, the frame, the title bar and the controls now live in `window.css`. The resize
+ * handles stay here, with the rest of the shell's structural geometry.
  */
-
-.aura-window-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  /* Transparent to the pointer until a window is under it, or the desktop stops taking clicks. */
-  pointer-events: none;
-}
-
-.aura-window-layer > * {
-  pointer-events: auto;
-}
-
-/* Where a dragged window would land. A preview; nothing is applied until the drop. */
-.aura-window-snap-preview {
-  position: absolute;
-  border-radius: var(--window-radius, var(--radius-md));
-  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 60%, transparent);
-  pointer-events: none;
-  transition:
-    left var(--duration-fast) var(--easing-standard),
-    top var(--duration-fast) var(--easing-standard),
-    width var(--duration-fast) var(--easing-standard),
-    height var(--duration-fast) var(--easing-standard);
-}
-
-/*
- * The window is only a geometry box: it positions, it stacks, and it does **not** clip.
- * `.aura-window-frame` inside it carries the visible surface and the clipping, so the resize
- * handles - siblings of the frame - are not cut away by the rounded corners.
- */
-.aura-window {
-  position: absolute;
-}
-
-.aura-window-frame {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  border-radius: var(--window-radius, var(--radius-md));
-  /*
-   * Fill, shadow and blur all come from elevation level e3 (`src/styles/elevation.css`). The
-   * frame asks for blur only while it is the focused window - see `<Surface blur={focused}>` -
-   * and an unfocused one falls back to the same tint over an opaque base, because transparency
-   * with nothing blurred behind it shows the desktop icons straight through the window, which
-   * reads as a rendering fault rather than as depth.
-   */
-  outline: 1px solid var(--color-surface-strong);
-  outline-offset: -1px;
-  overflow: hidden;
-}
-
-/* The focused window takes a little accent in its hairline - the one cue that says which of
-   several overlapping windows has the keyboard. */
-.aura-window[data-focused] .aura-window-frame {
-  outline-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-surface-strong));
-}
-
-.aura-window[data-mode='maximised'] .aura-window-frame {
-  border-radius: 0;
-}
-
-.aura-window-title {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 0.6em;
-  height: var(--window-title-bar-height, 40px);
-  padding: 0 0.4em 0 0.9em;
-  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
-  color: var(--color-text-muted);
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-}
-
-.aura-window[data-focused] .aura-window-title {
-  color: var(--color-text);
-  background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
-}
-
-.aura-window-name {
-  text-align: var(--window-title-align, left);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.9rem;
-  line-height: 1.4;
-  font-weight: 600;
-}
-
-.aura-window-controls {
-  display: flex;
-  gap: 0.15em;
-}
-
-.aura-window-control {
-  display: grid;
-  place-items: center;
-  width: 2.1em;
-  height: 1.9em;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.aura-window-control:hover,
-.aura-window-control[data-focused] {
-  background: var(--color-surface-strong);
-  color: var(--color-text);
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: -2px;
-}
-
-.aura-window-control[data-danger]:hover,
-.aura-window-control[data-danger][data-focused] {
-  background: var(--color-danger);
-  color: var(--color-text);
-}
-
-.aura-window-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  scrollbar-width: none;
-}
-
-.aura-window-body::-webkit-scrollbar {
-  display: none;
-}
 
 /* ---- folder windows -------------------------------------------------------------------------
  *
@@ -843,14 +738,14 @@
  * data, so the difference between them lives here rather than in three components.
  */
 
-.aura-folder {
+.aura-folder-window {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
 
-.aura-folder-bar {
+.aura-folder-window-bar {
   flex: none;
   display: flex;
   align-items: center;
@@ -861,16 +756,16 @@
   font-size: 0.82rem;
 }
 
-.aura-folder-count {
+.aura-folder-window-count {
   white-space: nowrap;
 }
 
-.aura-folder-tools {
+.aura-folder-window-tools {
   display: flex;
   gap: 0.2em;
 }
 
-.aura-folder-tool {
+.aura-folder-window-tool {
   display: grid;
   place-items: center;
   width: 2.2em;
@@ -884,32 +779,32 @@
   cursor: pointer;
 }
 
-.aura-folder-tool[data-active] {
+.aura-folder-window-tool[data-active] {
   background: var(--color-surface-strong);
   color: var(--color-text);
 }
 
-.aura-folder-tool:hover,
-.aura-folder-tool[data-focused] {
+.aura-folder-window-tool:hover,
+.aura-folder-window-tool[data-focused] {
   color: var(--color-text);
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -2px;
 }
 
-.aura-folder-body {
+.aura-folder-window-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
   scrollbar-width: none;
 }
 
-.aura-folder-body::-webkit-scrollbar {
+.aura-folder-window-body::-webkit-scrollbar {
   display: none;
 }
 
 /* The grid inside a window sits closer than a full screen's does. */
 .aura-window-body .aura-grid,
-.aura-folder-body .aura-grid {
+.aura-folder-window-body .aura-grid {
   padding-inline: var(--spacing-gutter);
 }
 
@@ -918,22 +813,22 @@
  * artwork and nothing else - bigger tiles, no caption reserved - which is what makes it worth
  * having as a separate layout rather than a size setting.
  */
-.aura-folder[data-layout='covers'] .aura-grid {
+.aura-folder-window[data-layout='covers'] .aura-grid {
   --tile-width: calc(var(--tile-width-large, 300) * 1px * var(--ui-scale));
 }
 
-.aura-folder[data-layout='covers'] .aura-tile-label {
+.aura-folder-window[data-layout='covers'] .aura-tile-label {
   display: none;
 }
 
 /* List: one dense row per item, the only layout that survives a folder of hundreds. */
-.aura-folder-list {
+.aura-folder-window-list {
   display: flex;
   flex-direction: column;
   padding: 0 0.5em 0.5em;
 }
 
-.aura-folder-row {
+.aura-folder-window-row {
   display: flex;
   align-items: center;
   gap: 0.75em;
@@ -949,14 +844,14 @@
   cursor: pointer;
 }
 
-.aura-folder-row[data-focused] {
+.aura-folder-window-row[data-focused] {
   background: var(--color-surface-strong);
   color: var(--color-text);
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -2px;
 }
 
-.aura-folder-row-art {
+.aura-folder-window-row-art {
   flex: none;
   display: grid;
   place-items: center;
@@ -966,13 +861,13 @@
   overflow: hidden;
 }
 
-.aura-folder-row-art img {
+.aura-folder-window-row-art img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.aura-folder-row-name {
+.aura-folder-window-row-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -981,7 +876,7 @@
   color: var(--color-text);
 }
 
-.aura-folder-row-meta {
+.aura-folder-window-row-meta {
   flex: none;
   font-variant-numeric: tabular-nums;
   font-size: 0.82em;
@@ -1348,7 +1243,7 @@
 }
 
 /* The glyph sizes itself to its box, so the preview has to give it one - a folder shape's 4:3. */
-.aura-editor-preview .aura-folder-glyph {
+.aura-editor-preview .aura-glyph {
   width: 5.5rem;
   height: 4.125rem;
   font-size: 4.125rem;
@@ -1406,11 +1301,11 @@
 }
 
 /* A shape choice holds a real glyph, which needs room to read as a silhouette. */
-.aura-choice:has(.aura-folder-glyph) {
+.aura-choice:has(.aura-glyph) {
   height: auto;
 }
 
-.aura-choice .aura-folder-glyph {
+.aura-choice .aura-glyph {
   width: 3.2rem;
   height: 2.4rem;
   font-size: 1.9rem;

@@ -52,7 +52,19 @@ function win(
   rect = { x: 10, y: 80, width: 600, height: 400 },
   mode: WindowInstance['mode'] = 'normal',
 ): WindowInstance {
-  return { id: 'win-1', kind: 'folder', targetId: 'f1', title: 'Games', icon: null, rect, mode, zIndex: 100, resizable: true };
+  return {
+    id: 'win-1',
+    kind: 'folder',
+    targetId: 'f1',
+    title: 'Games',
+    subtitle: 'Smart folder',
+    icon: null,
+    rect,
+    mode,
+    zIndex: 100,
+    resizable: true,
+    origin: null,
+  };
 }
 
 /** Calls to `update_folder` that carried a window geometry, as opposed to a layout change. */
@@ -81,12 +93,13 @@ describe('FolderWindowBody', () => {
     const { container } = render(<FolderWindowBody window={win()} />);
     await screen.findByText('2 items');
 
-    fireEvent.click(screen.getByLabelText('List'));
+    // A chip is named by its text, not by an aria-label: it is a word, not a glyph.
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
 
     expect(fakeApi.updateFolder).toHaveBeenCalledWith('f1', { layout: 'list' });
     // Optimistic: the rows are there before the core has answered.
-    expect(container.querySelector('.aura-folder[data-layout="list"]')).not.toBeNull();
-    expect(container.querySelectorAll('.aura-folder-row')).toHaveLength(2);
+    expect(container.querySelector('.aura-folder-window[data-layout="list"]')).not.toBeNull();
+    expect(container.querySelectorAll('.aura-folder-window-row')).toHaveLength(2);
   });
 
   it('explains an empty collection differently from an empty smart folder', async () => {

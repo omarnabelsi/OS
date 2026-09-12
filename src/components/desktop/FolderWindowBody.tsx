@@ -126,18 +126,18 @@ export function FolderWindowBody({ window: win }: { window: WindowInstance }): R
   const group = `window:${win.id}`;
 
   return (
-    <div className="aura-folder" data-layout={layout}>
-      <div className="aura-folder-bar">
-        <span className="aura-folder-count aura-type-window-subtitle">
-          {loading ? 'Loading…' : `${items.length} ${items.length === 1 ? 'item' : 'items'}`}
-        </span>
-
-        <div className="aura-folder-tools">
+    <div className="aura-folder-window" data-layout={layout}>
+      {/*
+        The view chips, and the one control that is not a view. "Edit folder" stays an icon
+        button: a chip row says "pick one of these", and exactly one chip may carry the accent
+        fill - a second filled thing beside it would make the fill decoration rather than state.
+      */}
+      <div className="aura-window-toolbar">
+        <div className="aura-window-chips" role="group" aria-label="Layout">
           {LAYOUTS.map((option) => (
-            <LayoutButton
+            <LayoutChip
               key={option.id}
               group={group}
-              icon={option.icon}
               label={option.label}
               active={layout === option.id}
               onPick={() => {
@@ -145,6 +145,9 @@ export function FolderWindowBody({ window: win }: { window: WindowInstance }): R
               }}
             />
           ))}
+        </div>
+
+        <div className="aura-folder-window-tools">
           <LayoutButton
             group={group}
             icon="settings"
@@ -158,21 +161,34 @@ export function FolderWindowBody({ window: win }: { window: WindowInstance }): R
                 kind: 'folderEditor',
                 targetId: folder.id,
                 title: `Edit ${folder.label ?? 'folder'}`,
+                subtitle: folder.label ?? null,
                 icon: 'settings',
-                size: { width: 460, height: 580 },
+                size: { width: 1260, height: 748 },
               });
             }}
           />
         </div>
       </div>
 
-      <div className="aura-folder-body">
+      {/* Names what the grid below is, and carries the live count the bar used to show. */}
+      <h2 className="aura-window-section aura-type-section">
+        {folder?.label ?? 'Items'}
+        {loading ? null : (
+          // Counted in words, not as a bare digit: "4" beside a heading reads as a rank, and a
+          // screen reader announcing "Games 4" says nothing useful.
+          <span className="aura-window-section-count">
+            {items.length} {items.length === 1 ? 'item' : 'items'}
+          </span>
+        )}
+      </h2>
+
+      <div className="aura-folder-window-body">
         {loading ? (
           <p className="aura-window-note">Loading…</p>
         ) : items.length === 0 ? (
           <EmptyFolder kind={folder?.kind} />
         ) : layout === 'list' ? (
-          <div className="aura-folder-list">
+          <div className="aura-folder-window-list">
             {items.map((item) => (
               <ListRow key={item.id} item={item} group={group} onActivate={activate} />
             ))}
@@ -207,6 +223,36 @@ function sameGeometry(a: FolderWindowState, b: FolderWindowState): boolean {
   );
 }
 
+/**
+ * One view choice. Exactly one chip in the row is filled with the accent (window.css), which is
+ * what makes the fill mean "this is the view you are looking at" rather than mere decoration.
+ */
+function LayoutChip({
+  group,
+  label,
+  active,
+  onPick,
+}: {
+  group: string;
+  label: string;
+  active: boolean;
+  onPick(): void;
+}): React.JSX.Element {
+  const { ref, props } = useFocusable({ id: `${group}:chip:${label}`, group, onActivate: onPick });
+  return (
+    <button
+      ref={ref as React.Ref<HTMLButtonElement>}
+      type="button"
+      className="aura-window-chip"
+      data-active={active || undefined}
+      aria-pressed={active}
+      {...props}
+    >
+      {label}
+    </button>
+  );
+}
+
 function LayoutButton({
   group,
   icon,
@@ -225,7 +271,7 @@ function LayoutButton({
     <button
       ref={ref as React.Ref<HTMLButtonElement>}
       type="button"
-      className="aura-folder-tool"
+      className="aura-folder-window-tool"
       data-active={active || undefined}
       title={label}
       aria-label={label}
@@ -263,17 +309,17 @@ function ListRow({
     <button
       ref={ref as React.Ref<HTMLButtonElement>}
       type="button"
-      className="aura-folder-row"
+      className="aura-folder-window-row"
       {...props}
     >
-      <span className="aura-folder-row-art" style={{ background: `hsl(${hue} 40% 22%)` }}>
+      <span className="aura-folder-window-row-art" style={{ background: `hsl(${hue} 40% 22%)` }}>
         {art ? <img src={art} alt="" loading="lazy" draggable={false} /> : null}
       </span>
-      <span className="aura-folder-row-name">{item.name}</span>
+      <span className="aura-folder-window-row-name">{item.name}</span>
       {item.stats.favourite ? (
         <Icon name="star" size="0.85em" title="Favourite" />
       ) : null}
-      <span className="aura-folder-row-meta aura-type-tile-meta">{playtime(item.stats.playtimeSecs)}</span>
+      <span className="aura-folder-window-row-meta aura-type-tile-meta">{playtime(item.stats.playtimeSecs)}</span>
     </button>
   );
 }

@@ -1,0 +1,343 @@
+/**
+ * Window chrome.
+ *
+ * Every window is a DOM element in the one webview. The layer is the area windows are constrained
+ * to and that snapping divides up; it is measured, not assumed.
+ *
+ * The window is the same glass as the folder that spawned it, one blur level up and one shadow
+ * level up: level e3 against the folder's e1. That is what makes opening a folder read as the
+ * folder having grown, rather than as a dialog landing on top of it - and it is why the fill,
+ * the shadow and the blur all come from the ladder here too, with only the glass's own
+ * highlights (a hairline along the top edge, a sheen falling away over the first 38%) added.
+ *
+ * Note on drag regions: `data-tauri-drag-region` belongs on the *shell's* title bar, and is there
+ * (`titlebar` in shell.css). A window here is not an OS window, so a drag region on its bar would
+ * move the whole shell instead. These bars drag with pointer events, and the controls are guarded
+ * out of that gesture in `Window.tsx` - a drag region swallows presses on its children, which is
+ * the classic way to end up with dead buttons.
+ */
+
+.aura-window-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  /* Transparent to the pointer until a window is under it, or the desktop stops taking clicks. */
+  pointer-events: none;
+}
+
+.aura-window-layer > * {
+  pointer-events: auto;
+}
+
+/**
+ * The scrim under a focused window.
+ *
+ * With the blur on the desktop itself (below) this is the other half of "the window grew out of
+ * the desktop": the ground darkens and softens, so the eye reads one surface lifting rather than
+ * two surfaces competing.
+ */
+.aura-window-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--window-scrim, rgba(4, 6, 12, 0.52));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-window, 420ms) var(--easing-emphasized);
+}
+
+.aura-window-layer[data-focused-window]::before {
+  opacity: 1;
+}
+
+/**
+ * The desktop behind a focused window: blurred and dimmed, never hidden.
+ *
+ * On the screen slot rather than on the desktop surface, so it covers whatever screen is showing
+ * without the desktop having to know a window exists. The window layer is a sibling of the slot,
+ * so it is not caught by the filter.
+ */
+.aura-screen-slot {
+  transition: filter var(--duration-window, 420ms) var(--easing-emphasized);
+}
+
+/*
+ * The dim rides in the filter chain rather than in `opacity`.
+ *
+ * The slot's `opacity` is framer-motion's: the screen transition animates it, and it writes an
+ * inline style, which beats any stylesheet. Setting `opacity` here looked right and did nothing -
+ * the blur applied and the dim silently lost every time. `brightness` is in a property nothing
+ * else writes, and it composes with the blur in one pass.
+ */
+.aura-main[data-window-focused] .aura-screen-slot {
+  filter: blur(var(--window-backdrop-blur, 7px)) brightness(var(--window-backdrop-dim, 0.55));
+}
+
+/* Where a dragged window would land. A preview; nothing is applied until the drop. */
+.aura-window-snap-preview {
+  position: absolute;
+  border-radius: var(--window-radius, var(--radius-md));
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 60%, transparent);
+  pointer-events: none;
+  transition:
+    left var(--duration-fast) var(--easing-standard),
+    top var(--duration-fast) var(--easing-standard),
+    width var(--duration-fast) var(--easing-standard),
+    height var(--duration-fast) var(--easing-standard);
+}
+
+/*
+ * The window is only a geometry box: it positions, it stacks, and it does **not** clip.
+ * `.aura-window-frame` inside it carries the visible surface and the clipping, so the resize
+ * handles - siblings of the frame - are not cut away by the rounded corners.
+ */
+.aura-window {
+  position: absolute;
+}
+
+.aura-window-frame {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--window-radius, var(--radius-md));
+  border: 1px solid var(--window-border, rgba(255, 255, 255, 0.07));
+  /*
+   * Fill, shadow and blur come from level e3. The frame asks for blur only while it is the
+   * focused window - `<Surface blur={focused}>` - and an unfocused one falls back to the same
+   * tint over an opaque base, because transparency with nothing blurred behind it shows the
+   * desktop straight through the window, which reads as a rendering fault rather than as depth.
+   *
+   * The sheen is prepended to the level's own fill through `--surface-fill`, so it survives all
+   * three blur states instead of being a fourth background nobody maintains.
+   */
+  --surface-fill: linear-gradient(180deg, var(--window-sheen, rgba(255, 255, 255, 0.05)), transparent 38%),
+    linear-gradient(var(--surface-tint), var(--surface-tint));
+  /* Composed with e3's shadow, never replacing it - a bare `box-shadow` here would out-specify
+     `.aura-surface-e3` and silently drop the window's depth. */
+  box-shadow: var(--elevation-e3-shadow), inset 0 1px 0 var(--window-inset-highlight, rgba(255, 255, 255, 0.14));
+  overflow: hidden;
+}
+
+/*
+ * Which window has the keyboard is said with light, not colour: the focused one keeps a brighter
+ * hairline, and it is the only one the blur budget grants a live backdrop. Accent on window
+ * chrome would make cyan decoration rather than a report (docs/DESIGN accent rules).
+ */
+.aura-window[data-focused] .aura-window-frame {
+  border-color: var(--window-border-focused, rgba(255, 255, 255, 0.12));
+}
+
+.aura-window[data-mode='maximised'] .aura-window-frame {
+  border-radius: 0;
+}
+
+/* ---- title bar -------------------------------------------------------------------------------- */
+
+.aura-window-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: var(--window-title-bar-height, 64px);
+  padding: 0 20px 0 28px;
+  border-bottom: 1px solid var(--window-divider, rgba(255, 255, 255, 0.08));
+  color: var(--color-text);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.aura-window-title-divider {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
+}
+
+/*
+ * The one accent glyph in the chrome, and the design asks for it by name: it identifies *which*
+ * folder this window is, which is state rather than decoration. Everything else in this bar is
+ * ink - see the accent audit in docs/DESIGN.md.
+ */
+.aura-window-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  color: var(--color-accent);
+}
+
+.aura-window-heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.aura-window-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.aura-window-subtitle {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* ---- controls --------------------------------------------------------------------------------- */
+
+.aura-window-controls {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+.aura-window-control {
+  display: grid;
+  place-items: center;
+  width: var(--window-control-size, 40px);
+  height: var(--window-control-size, 40px);
+  border: 0;
+  border-radius: var(--window-control-radius, 12px);
+  background: var(--window-control-plate, rgba(255, 255, 255, 0.05));
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard),
+    outline-color var(--duration-base) var(--easing-emphasized),
+    box-shadow var(--duration-base) var(--easing-emphasized);
+}
+
+/* Hover raises alpha and ink; it never introduces colour. */
+.aura-window-control:hover {
+  background: color-mix(in srgb, var(--color-text) 9%, transparent);
+  color: var(--color-text);
+}
+
+/* Close is the one control that earns a colour, and only under the pointer or the ring. */
+.aura-window-control[data-danger]:hover,
+.aura-window-control[data-danger][data-focused] {
+  background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+  color: var(--color-text);
+}
+
+.aura-window-control[data-focused] {
+  color: var(--color-text);
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: -6px;
+  box-shadow: 0 0 26px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.aura-window-control:active {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+  transform: scale(0.92);
+}
+
+/* ---- body ------------------------------------------------------------------------------------- */
+
+.aura-window-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.aura-window-body::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- window content ----------------------------------------------------------------------------
+ *
+ * The chip row and the section header above a grid. A chip is a *choice*, and exactly one of
+ * them is filled with the accent - the design allows one filled accent chip and no more, because
+ * the fill is what says "this is the view you are looking at".
+ */
+
+.aura-window-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-gutter);
+  padding: 18px var(--spacing-edge) 6px;
+}
+
+.aura-window-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.aura-window-chip {
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: var(--font-weight-meta, 500);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard),
+    outline-color var(--duration-base) var(--easing-emphasized),
+    box-shadow var(--duration-base) var(--easing-emphasized);
+}
+
+/* Hover raises alpha, never introducing colour. */
+.aura-window-chip:hover:not([data-active]) {
+  background: color-mix(in srgb, var(--color-text) 9%, transparent);
+}
+
+.aura-window-chip[data-active] {
+  background: var(--color-accent);
+  /* Dark ink on the accent: the one filled accent surface in the app, and it has to be readable. */
+  color: var(--color-accent-contrast);
+  font-weight: var(--font-weight-label, 600);
+}
+
+.aura-window-chip[data-focused] {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: -6px;
+  box-shadow: 0 0 26px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.aura-window-chip:active {
+  transform: scale(0.97);
+}
+
+/**
+ * The section header over a grid.
+ *
+ * Sits above the artwork, never on it: at 52% ink it would be illegible over an arbitrary image,
+ * and the design is explicit that a section header is never laid over artwork.
+ */
+.aura-window-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 14px var(--spacing-edge) 0;
+}
+
+.aura-window-section-count {
+  color: color-mix(in srgb, var(--color-text) 38%, transparent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}

@@ -19,6 +19,8 @@
 /* The elevation ladder. After shell.css so a level's shadow and tint beat any structural rule
    left on the same element. */
 @import './elevation.css';
+/* Window chrome. After the ladder so the frame can compose e3's shadow with its own highlight. */
+@import './window.css';
 /* The type roles. After shell.css on purpose: a role class and a structural rule for the same
    element have equal specificity, so the role has to come last to win. */
 @import './type.css';

@@ -44,12 +44,23 @@ export function Tile({ item, rowId, group = 'content', onActivate }: TileProps):
   // same token, and the two must not drift.
   const { focusScale } = useTheme();
 
-  const { ref, focused, props } = useFocusable({
+  const {
+    ref,
+    visible: focused,
+    props: focusProps,
+  } = useFocusable({
     id: `tile:${rowId}:${item.id}`,
     group,
     onActivate: () => onActivate(item),
     onFocus: () => setFocusedItem(item.id),
   });
+  /*
+   * The lift, ring, bloom and revealed label are for focus the user placed with the D-pad or the
+   * keyboard. A pointer resting on a tile gets the hover state instead - otherwise hover *was*
+   * focus and the design's separate 1.03 hover could never be seen. `onFocus` still fires either
+   * way, so the hero panel and the colour bleed follow the pointer as they always did.
+   */
+  const props = { ...focusProps, 'data-focused': focused || undefined };
 
   const art = assetUrl(item.artwork.grid ?? item.artwork.hero ?? undefined);
   const hue = useMemo(() => placeholderHue(item.name), [item.name]);

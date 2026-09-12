@@ -28,7 +28,7 @@ const ELEVATION = read('elevation.css');
  * their own files, and a rule that escapes the ladder is exactly as much of a problem in one of
  * those as in the original.
  */
-const SHEETS = ['shell.css', 'folder.css', 'desktop.css', 'taskbar.css'] as const;
+const SHEETS = ['shell.css', 'folder.css', 'desktop.css', 'taskbar.css', 'window.css'] as const;
 const COMPONENT_CSS = SHEETS.map(read).join('\n');
 const TASKBAR = read('taskbar.css');
 

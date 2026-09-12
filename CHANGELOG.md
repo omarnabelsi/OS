@@ -39,7 +39,25 @@ V1 "The Face" skeleton.
   tooltips after a 400ms dwell or immediately on focus. One component and one rule set serve all
   four edges - moving the bar is a change of anchor, not a second layout.
 
+- **The window shell.** 1300 x 790 by default, level e3 glass with a top sheen and an inset
+  highlight composed onto e3's own shadow, and the desktop behind it blurred 7px and dimmed while
+  a window holds focus - so a folder window reads as the folder having grown, not as a dialog
+  landing on it. It opens over 420ms from the point the folder was activated. The 64px title bar
+  carries a back chevron, a divider, the folder's icon in accent, a title and a subtitle, with
+  three 40px controls on the right. Content is a chip row - exactly one chip filled with the
+  accent - a section header that never sits over artwork, and the tile grid with its own hover,
+  focus and press states. Focus scoping is the real work: each window owns the engine's scope
+  while it is focused, so directional movement cannot reach a background window, and moving
+  between windows stays a separate action.
+
 ### Fixed - navigation
+
+- **Directional movement could not walk a wide row.** Drifting off-axis was priced at 30px of
+  forward progress, which is right at tile scale and wrong at bar scale: on a 1300px window title
+  bar the control 1114px away along the bar cost more than a chip 31px below it, so pressing right
+  from the back chevron dropped into the content and the window controls could only be reached
+  from the far side of the bar. Alignment is now a tier rather than a price - anything still on
+  your row or column beats anything that is not, and distance only decides within a tier.
 
 - **The D-pad could not get back to the desktop from the taskbar.** Down from the bottom folder
   reached the taskbar's Home button, but Up from there picked whatever was best aligned above the

@@ -3,10 +3,16 @@
  * that decide "what is to the right of this tile" can be tested directly.
  *
  * The model: a move succeeds only if a candidate actually lies in the requested direction. Among
- * those, the winner is the one with the lowest cost, where cost is distance travelled along the
- * direction of travel plus a heavy penalty for drifting off the current row or column. That
- * penalty is what makes a grid feel like a grid: pressing right walks along a row rather than
- * diving diagonally at the nearest thing on screen.
+ * those, anything that still overlaps the current row (for a horizontal move) or column (for a
+ * vertical one) wins outright over anything that does not - and only within a tier does distance
+ * decide. That two-tier rule is what makes a grid feel like a grid: pressing right walks along
+ * the row you are on and never dives at whatever happens to be nearest.
+ *
+ * It used to be one tier, with off-axis drift priced at 30px of forward progress. That is fine at
+ * tile scale and wrong at bar scale: on a 1300px window title bar, the control 1100px away along
+ * the bar cost more than a chip 30px below it, so pressing right from the back chevron dropped
+ * into the content and the window controls could only be reached from the far side. Distance
+ * should not be able to outvote alignment, however wide the row is.
  */
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
@@ -23,7 +29,7 @@ export interface Candidate {
   rect: Rect;
 }
 
-/** Drifting one pixel off-axis costs this many pixels of forward progress. */
+/** Drifting off the row costs this many pixels of forward progress - within tier 2 only. */
 const CROSS_AXIS_WEIGHT = 30;
 /** Gentle tie-break between candidates that all overlap the current row/column. */
 const ALIGNMENT_WEIGHT = 0.2;
@@ -57,6 +63,8 @@ export function pickInDirection<T extends Candidate>(
   const fromCenter = centerOf(from);
 
   let best: T | null = null;
+  // Tier 0 is "still on this row/column"; tier 1 is everything else. A lower tier always wins.
+  let bestTier = Number.POSITIVE_INFINITY;
   let bestCost = Number.POSITIVE_INFINITY;
 
   for (const candidate of candidates) {
@@ -79,8 +87,10 @@ export function pickInDirection<T extends Candidate>(
       (horizontal ? center.y : center.x) - (horizontal ? fromCenter.y : fromCenter.x),
     );
 
+    const tier = gap > 0 ? 1 : 0;
     const cost = progress + gap * CROSS_AXIS_WEIGHT + alignment * ALIGNMENT_WEIGHT;
-    if (cost < bestCost) {
+    if (tier < bestTier || (tier === bestTier && cost < bestCost)) {
+      bestTier = tier;
       bestCost = cost;
       best = candidate;
     }

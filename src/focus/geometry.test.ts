@@ -105,6 +105,34 @@ describe('pickInDirection', () => {
     expect(pickInDirection(tile, nav, 'up')?.id).toBe('apps');
   });
 
+  it('walks a wide title bar instead of dropping into the row below it', () => {
+    /*
+     * The real geometry of a 1300px window title bar, measured in the running shell: the back
+     * chevron on the left, the three controls on the right, and the chip row 31px below.
+     *
+     * Alignment is not negotiable against distance. Pricing the 31px drop at 30px each made it
+     * cheaper (930) than walking 1114px along the bar, so pressing right from the chevron landed
+     * on a chip and the window controls were unreachable from the left of the bar.
+     */
+    const back = rect(77, 125, 40, 40);
+    const bar = [
+      at('minimise', 1191, 125, 40, 40),
+      at('maximise', 1239, 125, 40, 40),
+      at('close', 1287, 125, 40, 40),
+      at('chip-grid', 113, 196, 68, 34),
+      at('chip-list', 188, 196, 60, 34),
+    ];
+    expect(pickInDirection(back, bar, 'right')?.id).toBe('minimise');
+    // And the row below is still exactly one press down.
+    expect(pickInDirection(back, bar, 'down')?.id).toBe('chip-grid');
+  });
+
+  it('keeps alignment ahead of distance however far the aligned neighbour is', () => {
+    const near = at('near', 60, 130, 100, 100);
+    const far = at('far', 4000, 0, 100, 100);
+    expect(pickInDirection(rect(0, 0), [near, far], 'right')?.id).toBe('far');
+  });
+
   it('is symmetric: moving right then left returns to the start', () => {
     for (const id of ['a', 'b', 'd', 'e', 'h']) {
       const right = pickInDirection(from(id), others(id), 'right');

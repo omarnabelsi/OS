@@ -58,13 +58,13 @@ export function FolderGlyph({ folder, fallbackIcon = 'files' }: FolderGlyphProps
   const tint = folder?.color ?? undefined;
 
   return (
-    <span className="aura-folder-glyph" style={tint ? { '--folder-tint': tint } as React.CSSProperties : undefined}>
+    <span className="aura-glyph" style={tint ? { '--folder-tint': tint } as React.CSSProperties : undefined}>
       {/*
         The shape is a mask rather than an <img>, so the tint colours it and a theme can ship a
         flat silhouette instead of having to bake every colour into the SVG.
       */}
       <span
-        className="aura-folder-shape"
+        className="aura-glyph-shape"
         data-fallback={shapeUrl ? undefined : true}
         style={
           shapeUrl
@@ -77,9 +77,9 @@ export function FolderGlyph({ folder, fallbackIcon = 'files' }: FolderGlyphProps
       />
 
       {cover ? (
-        <img className="aura-folder-cover" src={cover} alt="" draggable={false} />
+        <img className="aura-glyph-cover" src={cover} alt="" draggable={false} />
       ) : (
-        <span className="aura-folder-icon">
+        <span className="aura-glyph-icon">
           <Icon name={(folder?.icon as IconName) || fallbackIcon} size="1em" />
         </span>
       )}

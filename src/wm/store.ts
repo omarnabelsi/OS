@@ -26,23 +26,33 @@ import {
 export type WindowKind = 'folder' | 'folderEditor' | 'settings' | 'app' | 'widget';
 export type WindowMode = 'normal' | 'maximised' | 'minimised';
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
 export interface WindowInstance {
   id: string;
   kind: WindowKind;
   /** `Folder.id` for a folder window; unused for singletons like Settings. */
   targetId: string | null;
   title: string;
+  /** The quiet second line beside the title. Null when there is nothing true to say. */
+  subtitle: string | null;
   icon: IconName | null;
   /** Geometry in the *normal* mode. Maximise does not overwrite it. */
   rect: Rect;
   mode: WindowMode;
   zIndex: number;
   resizable: boolean;
-}
-
-export interface Point {
-  x: number;
-  y: number;
+  /**
+   * Where on screen the window was opened from, in viewport pixels, or null.
+   *
+   * The transform origin of the open animation, so a window expands out of the folder that was
+   * activated rather than out of the middle of the screen. Geometry the *window manager* does
+   * not interpret: it is handed to `Window` and used for nothing else.
+   */
+  origin: Point | null;
 }
 
 /**
@@ -61,6 +71,7 @@ export interface OpenWindowSpec {
   kind: WindowKind;
   targetId?: string | null;
   title: string;
+  subtitle?: string | null;
   icon?: IconName | null;
   rect?: Rect;
   /**
@@ -71,6 +82,8 @@ export interface OpenWindowSpec {
   /** Reopen maximised, for a folder that was maximised when it was last closed. */
   mode?: Extract<WindowMode, 'normal' | 'maximised'>;
   resizable?: boolean;
+  /** The point the window should appear to grow out of - see `WindowInstance.origin`. */
+  origin?: Point | null;
 }
 
 export interface WmState {
@@ -208,11 +221,13 @@ export const useWmStore = create<WmState>()((set, get) => ({
       kind: spec.kind,
       targetId: spec.targetId ?? null,
       title: spec.title,
+      subtitle: spec.subtitle ?? null,
       icon: spec.icon ?? null,
       rect: constrainToDesktop(clampSize(placement(spec, bounds, windows.length)), bounds),
       mode: spec.mode ?? 'normal',
       zIndex: TOP_Z + windows.length,
       resizable: spec.resizable ?? true,
+      origin: spec.origin ?? null,
     };
 
     set({ windows: restack([...windows, instance], id), focusedId: id });

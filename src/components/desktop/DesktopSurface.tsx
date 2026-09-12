@@ -201,13 +201,42 @@ export function DesktopSurface(): React.JSX.Element {
       if (item.kind === 'folder' && item.targetId) {
         const folder = folderById(item.targetId);
         const saved = folder?.windowState ?? null;
+
+        /*
+         * Where the window should appear to grow from: the middle of the folder just activated.
+         *
+         * Computed from the same cell arithmetic that drew the folder rather than by measuring
+         * the DOM, so it is right for a folder that was pulled into view on a small display too.
+         */
+        const field = surfaceRef.current?.getBoundingClientRect();
+        const at = placed.get(item.id) ?? { x: item.x, y: item.y };
+        const origin = field
+          ? {
+              x: field.left + cellToPx(metrics.strideX, at.x) + cell.width / 2,
+              y: field.top + cellToPx(metrics.strideY, at.y) + cell.height / 2,
+            }
+          : null;
+
+        // What kind of folder this is, which is the one thing about it the title does not say.
+        const subtitle =
+          folder?.kind === 'smart'
+            ? 'Smart folder'
+            : folder?.kind === 'collection'
+              ? 'Collection'
+              : folder?.kind === 'filesystem'
+                ? 'Folder on disk'
+                : null;
+
         // `open` raises the existing window if this folder is already showing, rather than
         // stacking a second identical one.
         openWindow({
           kind: 'folder',
           targetId: item.targetId,
           title: item.labelOverride ?? folder?.label ?? 'Folder',
+          subtitle,
           icon: (folder?.icon as IconName | undefined) ?? 'files',
+          origin,
+          size: { width: 1300, height: 790 },
           // A folder reopens where it was left. `constrainToDesktop` still applies, so a
           // position saved on a larger monitor cannot strand the window off-screen.
           ...(saved
@@ -224,7 +253,19 @@ export function DesktopSurface(): React.JSX.Element {
         void launch(item.targetId);
       }
     },
-    [folderById, launch, openWindow, setFocusedItem],
+    // `placed`, the strides and the cell size are read for the window's growth origin, so a
+    // stale closure here would grow the window out of where a folder used to be.
+    [
+      folderById,
+      launch,
+      openWindow,
+      setFocusedItem,
+      placed,
+      metrics.strideX,
+      metrics.strideY,
+      cell.width,
+      cell.height,
+    ],
   );
 
   if (loaded && !desktop) {

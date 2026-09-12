@@ -8,6 +8,12 @@
  * navigation is then confined to it, which is the only workable answer to overlapping windows:
  * a tile in a background window is geometrically "to the right of" one in the foreground, and
  * must never receive focus (docs/RISKS.md R11).
+ *
+ * The window grows from wherever it was opened. `origin` is the point on screen the user acted
+ * on - the folder they activated - and it becomes the transform origin, so the open animation
+ * expands out of that folder rather than out of the middle of the screen. With the desktop
+ * blurring and dimming behind it at the same moment (window.css), opening a folder reads as the
+ * folder having grown, which is the whole point of it being the same glass one level up.
  */
 
 import { motion, type Variants } from 'framer-motion';
@@ -22,6 +28,9 @@ import { constrainToDesktop, resizeRect, snapRegionFor, type ResizeEdge, type Re
 import { useWmStore, type MinimiseHint, type WindowInstance } from './store';
 
 const RESIZE_EDGES: ResizeEdge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+
+/** Open and close, in seconds. The design's 420ms emphasised. */
+const OPEN_SECONDS = 0.42;
 
 export interface WindowProps {
   window: WindowInstance;
@@ -59,9 +68,12 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
    * capturing element - so the click the browser synthesises landed on the title bar, never on
    * the button under the cursor. The buttons looked fine and did nothing. Checks that call
    * `element.click()` skip pointer events entirely, which is how it got past them.
+   *
+   * Every button in the bar matches, the back chevron included - it sits in the left cluster
+   * rather than with the window controls, and would otherwise be the one dead button left.
    */
   const isControl = (target: EventTarget | null) =>
-    target instanceof Element && target.closest('.aura-window-controls') !== null;
+    target instanceof Element && target.closest('.aura-window-control') !== null;
 
   const startTitleDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (isControl(event.target)) return;
@@ -126,6 +138,7 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
   };
 
   // The controls are focusables in the window's own group, so a D-pad can reach them.
+  const backButton = useFocusable({ id: `${group}:back`, group, onActivate: () => close(win.id) });
   const closeButton = useFocusable({ id: `${group}:close`, group, onActivate: () => close(win.id) });
   const minButton = useFocusable({ id: `${group}:minimise`, group, onActivate: () => minimise(win.id) });
   const maxButton = useFocusable({
@@ -143,7 +156,7 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
    * through `AnimatePresence custom` because an unmounting component has no props left to read.
    */
   const variants: Variants = {
-    enter: reduceMotion ? { opacity: 1 } : { opacity: 0, scale: 0.96 },
+    enter: reduceMotion ? { opacity: 1 } : { opacity: 0, scale: 0.94 },
     visible: {
       opacity: 1,
       scale: 1,
@@ -151,12 +164,17 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
       y: 0,
       transition: reduceMotion
         ? { duration: 0 }
-        : { duration: 0.18, ease: [0.05, 0.7, 0.1, 1] as const },
+        : { duration: OPEN_SECONDS, ease: [0.05, 0.7, 0.1, 1] as const },
     },
     exit: (hint: MinimiseHint | null | undefined) => {
       if (reduceMotion) return { opacity: 0, transition: { duration: 0 } };
       if (hint?.id !== win.id) {
-        return { opacity: 0, scale: 0.96, transition: { duration: 0.16 } };
+        // Back into the folder it grew from, on the same curve it opened with.
+        return {
+          opacity: 0,
+          scale: 0.94,
+          transition: { duration: OPEN_SECONDS, ease: [0.05, 0.7, 0.1, 1] as const },
+        };
       }
       return {
         opacity: 0,
@@ -184,6 +202,10 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
         width: rect.width,
         height: rect.height,
         zIndex: win.zIndex,
+        // Grow from whatever was activated to open this - see the file header.
+        transformOrigin: win.origin
+          ? `${Math.round(win.origin.x - rect.x)}px ${Math.round(win.origin.y - rect.y)}px`
+          : 'center center',
       }}
       variants={variants}
       initial="enter"
@@ -214,8 +236,36 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
             if (!isControl(event.target)) toggleMaximise(win.id);
           }}
         >
-          {win.icon ? <Icon name={win.icon} size="1em" /> : null}
-          <span className="aura-window-name aura-type-window-title">{win.title}</span>
+          {/*
+            The way out, where the eye looks for it. There is no folder history in V1, so "back"
+            is the truthful one: it leaves the folder and returns to the desktop. The window
+            controls keep their own close for the pointer.
+          */}
+          <button
+            ref={backButton.ref as React.Ref<HTMLButtonElement>}
+            type="button"
+            className="aura-window-control aura-window-back"
+            aria-label="Back to the desktop"
+            title="Back to the desktop"
+            {...backButton.props}
+          >
+            <Icon name="back" size="1em" />
+          </button>
+
+          <span className="aura-window-title-divider" aria-hidden="true" />
+
+          {win.icon ? (
+            <span className="aura-window-icon" aria-hidden="true">
+              <Icon name={win.icon} size="1em" />
+            </span>
+          ) : null}
+
+          <span className="aura-window-heading">
+            <span className="aura-window-name aura-type-window-title">{win.title}</span>
+            {win.subtitle ? (
+              <span className="aura-window-subtitle aura-type-window-subtitle">{win.subtitle}</span>
+            ) : null}
+          </span>
 
           <div className="aura-window-controls">
             <button
