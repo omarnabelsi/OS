@@ -69,15 +69,22 @@
   object-fit: cover;
 }
 
-/* The focused item's art, blurred to a colour wash. */
+/*
+ * The focused item's art, blurred to a colour wash.
+ *
+ * A colour wash is the whole intent, and `--blur-background` alone does not get there: 24px on
+ * a 1440p screen still leaves recognisable box art, which over the aurora field read as grey
+ * smudges rather than as a tint. The multiplier keeps the theme in control of the scale while
+ * pushing this past the point where shapes survive.
+ */
 .aura-background-bleed {
   position: absolute;
   inset: -10%;
   width: 120%;
   height: 120%;
   object-fit: cover;
-  opacity: 0.24;
-  filter: blur(var(--blur-background)) saturate(1.4);
+  opacity: 0.22;
+  filter: blur(calc(var(--blur-background) * 3.5)) saturate(1.5);
   transform: scale(1.1);
   transition: opacity var(--duration-slow) var(--easing-standard);
   will-change: opacity;
@@ -99,27 +106,100 @@
 /* ---- frame ------------------------------------------------------------------------------ */
 
 /*
- * The frame's axis is decided by which edge the taskbar is docked to.
+ * The shell: the title bar (only when windowed) across the top, then the body.
  *
- * The taskbar is the *last* child, so `column` puts it at the bottom and `row` at the right;
- * the reversed directions move it to the top or left without reordering the DOM, which keeps
- * reading order and tab order matching the visual order in every configuration.
+ * `.aura-root` is always a column, so the title bar spans the full width whichever edge the
+ * taskbar is on. The body is where that edge is decided: the taskbar is its *last* child, so
+ * `column` puts it at the bottom and `row` at the right, and the reversed directions move it to
+ * the top or left without reordering the DOM - reading order and tab order match the visual
+ * order in every configuration.
  */
 .aura-root {
   display: flex;
   flex-direction: column;
 }
 
-.aura-root[data-taskbar='top'] {
+.aura-shell-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.aura-shell-body[data-taskbar='top'] {
   flex-direction: column-reverse;
 }
 
-.aura-root[data-taskbar='left'] {
+.aura-shell-body[data-taskbar='left'] {
   flex-direction: row-reverse;
 }
 
-.aura-root[data-taskbar='right'] {
+.aura-shell-body[data-taskbar='right'] {
   flex-direction: row;
+}
+
+/* ---- the shell's title bar --------------------------------------------------------------------
+ *
+ * Drawn only when the shell is windowed. Above the nav bar's z-index so nothing positioned can
+ * sit over its buttons, and a Tauri drag region so the OS moves the window by it.
+ */
+.aura-titlebar {
+  position: relative;
+  z-index: 5;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 2rem;
+  padding-left: 0.9em;
+  background: color-mix(in srgb, var(--color-background) 86%, var(--color-surface-strong));
+  box-shadow: 0 1px 0 var(--color-surface-strong);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.aura-titlebar-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.aura-titlebar-controls {
+  display: flex;
+}
+
+.aura-titlebar-control {
+  display: grid;
+  place-items: center;
+  width: 2.9rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  /* `body` sets `cursor: default`, and a button that does not look pressable reads as dead. */
+  cursor: pointer;
+}
+
+.aura-titlebar-control:hover,
+.aura-titlebar-control[data-focused] {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.aura-titlebar-control[data-focused] {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.aura-titlebar-control[data-danger]:hover,
+.aura-titlebar-control[data-danger][data-focused] {
+  background: var(--color-danger);
+  color: var(--color-text);
 }
 
 /* Everything that is not the taskbar: nav bar above, screen and windows below. */
@@ -456,9 +536,13 @@
   width: 1.8em;
   height: 1.8em;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--color-background) 70%, transparent);
+  /*
+   * Opaque rather than blurred glass. There is one of these per tile, so a blurred badge is not
+   * one extra blurred surface but a dozen - the exact multiplication the blur budget exists to
+   * prevent, and on a surface 1.8em across nobody could tell the difference anyway.
+   */
+  background: color-mix(in srgb, var(--color-background) 88%, var(--color-surface-strong));
   color: var(--color-accent);
-  backdrop-filter: blur(8px);
 }
 
 /*
@@ -533,7 +617,8 @@
   padding: 0.35em;
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
+  /* Fill, shadow and blur come from elevation level e1 - a desktop item is the lowest raised
+     thing in the shell, and the first to lose its blur when the budget binds. */
   color: var(--color-text);
   font: inherit;
   cursor: pointer;
@@ -542,8 +627,10 @@
   touch-action: none;
 }
 
+/* Lifting the tint rather than setting a background keeps the highlight working in all three
+   blur states - a `background` here would replace whichever one the level had painted. */
 .aura-desktop-icon[data-focused] {
-  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  --surface-tint: color-mix(in srgb, var(--color-text) 16%, transparent);
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
@@ -683,36 +770,21 @@
   min-height: 0;
   border-radius: var(--window-radius, var(--radius-md));
   /*
-   * Opaque, in two layers: the theme's surface tint over the theme's background. An unfocused
-   * window has no blur behind it (see below), so any transparency here shows the desktop icons
-   * straight through the window - which reads as a rendering fault, not as depth. The bottom
-   * layer is the opaque one; the tint above it may be as translucent as the theme likes.
+   * Fill, shadow and blur all come from elevation level e3 (`src/styles/elevation.css`). The
+   * frame asks for blur only while it is the focused window - see `<Surface blur={focused}>` -
+   * and an unfocused one falls back to the same tint over an opaque base, because transparency
+   * with nothing blurred behind it shows the desktop icons straight through the window, which
+   * reads as a rendering fault rather than as depth.
    */
-  background:
-    linear-gradient(
-      color-mix(in srgb, var(--color-surface) 55%, transparent),
-      color-mix(in srgb, var(--color-surface) 55%, transparent)
-    ),
-    var(--color-background);
-  box-shadow:
-    inset 0 0 0 1px var(--color-surface-strong),
-    0 24px 64px color-mix(in srgb, var(--color-background) 78%, transparent);
+  outline: 1px solid var(--color-surface-strong);
+  outline-offset: -1px;
   overflow: hidden;
 }
 
-/*
- * Only the focused window blurs, and only it is translucent. Several backdrop-filtered surfaces
- * over a shader wallpaper is a real GPU cost (docs/RISKS.md R12), and the blur is what makes
- * transparency read as glass rather than as a bug - so the two travel together.
- */
+/* The focused window takes a little accent in its hairline - the one cue that says which of
+   several overlapping windows has the keyboard. */
 .aura-window[data-focused] .aura-window-frame {
-  /* `window.opacity`: 100% turns the glass off, which a theme without blur needs - see above. */
-  background: color-mix(in srgb, var(--color-background) var(--window-opacity, 62%), var(--color-surface-strong));
-  backdrop-filter: blur(var(--blur-surface));
-  -webkit-backdrop-filter: blur(var(--blur-surface));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, var(--color-surface-strong)),
-    0 32px 80px color-mix(in srgb, var(--color-background) 85%, transparent);
+  outline-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-surface-strong));
 }
 
 .aura-window[data-mode='maximised'] .aura-window-frame {
@@ -998,19 +1070,24 @@
   margin: var(--taskbar-inset, 0px);
   border-radius: var(--taskbar-radius, 0px);
   padding: 0.35em 0.6em;
-  background: color-mix(in srgb, var(--color-background) 78%, var(--color-surface-strong));
-  backdrop-filter: blur(var(--blur-surface));
-  -webkit-backdrop-filter: blur(var(--blur-surface));
+  /* Fill, shadow and blur come from elevation level e2 - the taskbar is the one surface that is
+     up the whole time, so it keeps its blur ahead of the window when the budget binds. */
   color: var(--color-text-muted);
   font-size: 0.85rem;
 }
 
+/*
+ * The hairline along the docked edge, composed with the level's shadow rather than replacing it:
+ * a more specific `box-shadow` would silently drop e2's depth. A bar with an inset and a radius
+ * is floating and has no docked edge to draw, but themes dock theirs flush and this is the line
+ * that separates it from the screen behind.
+ */
 .aura-taskbar[data-position='top'] {
-  box-shadow: 0 1px 0 var(--color-surface-strong);
+  box-shadow: var(--elevation-e2-shadow), 0 1px 0 var(--color-surface-strong);
 }
 
 .aura-taskbar[data-position='bottom'] {
-  box-shadow: 0 -1px 0 var(--color-surface-strong);
+  box-shadow: var(--elevation-e2-shadow), 0 -1px 0 var(--color-surface-strong);
 }
 
 /* Vertical docks: the bar becomes a column and the strip runs down it. */
@@ -1022,11 +1099,11 @@
 }
 
 .aura-taskbar[data-position='left'] {
-  box-shadow: 1px 0 0 var(--color-surface-strong);
+  box-shadow: var(--elevation-e2-shadow), 1px 0 0 var(--color-surface-strong);
 }
 
 .aura-taskbar[data-position='right'] {
-  box-shadow: -1px 0 0 var(--color-surface-strong);
+  box-shadow: var(--elevation-e2-shadow), -1px 0 0 var(--color-surface-strong);
 }
 
 .aura-taskbar-strip {
@@ -1197,10 +1274,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.aura-taskbar-clock small {
-  color: var(--color-text-muted);
-  font-size: 0.8em;
-}
+/* The date's size, weight and ink come from `.aura-type-clock-date`. An element selector like
+   `.aura-taskbar-clock small` out-specifies a single role class, so it would silently win. */
 
 .aura-taskbar[data-position='left'] .aura-taskbar-clock,
 .aura-taskbar[data-position='right'] .aura-taskbar-clock {
@@ -1310,13 +1385,9 @@
   margin-bottom: var(--spacing-row);
 }
 
+/* Spacing only: the type comes from `.aura-type-section`, which this would out-specify. */
 .aura-setting-group h3 {
   margin: 0 0 0.7em;
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
 }
 
 .aura-setting {
@@ -1553,13 +1624,9 @@
   font-weight: 600;
 }
 
+/* Spacing only - see the note on `.aura-setting-group h3`. */
 .aura-editor-field h3 {
   margin: 0 0 0.5em;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
 }
 
 .aura-editor-field > .aura-input {
@@ -1729,10 +1796,9 @@
   overflow-y: auto;
   padding: 1.6rem;
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--color-background) 92%, var(--color-surface-strong));
-  box-shadow:
-    inset 0 1px 0 var(--color-surface-strong),
-    0 30px 80px color-mix(in srgb, var(--color-background) 80%, transparent);
+  /* Fill, shadow and blur come from elevation level e4; the scrim behind it is on `.aura-overlay`. */
+  outline: 1px solid var(--color-surface-strong);
+  outline-offset: -1px;
 }
 
 .aura-panel-title {
@@ -1845,10 +1911,9 @@
 
 /* ---- launch curtain ------------------------------------------------------------------------------ */
 
+/* The curtain is an e4 surface covering the whole screen, so it needs no fill of its own. */
 .aura-launch {
-  background: color-mix(in srgb, var(--color-background) 88%, transparent);
-  backdrop-filter: blur(var(--blur-background));
-  -webkit-backdrop-filter: blur(var(--blur-background));
+  border-radius: 0;
 }
 
 .aura-launch-body {

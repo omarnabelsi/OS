@@ -10,5 +10,7 @@
     "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "scripts/**/*.mjs"]
+  // Tooling, plus the tests that read files rather than render anything - no DOM lib here, which
+  // is the point: a `*.node.test.ts` asserting about the source tree should not reach for `window`.
+  "include": ["vite.config.ts", "scripts/**/*.mjs", "src/**/*.node.test.ts"]
 }

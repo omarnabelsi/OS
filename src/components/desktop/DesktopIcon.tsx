@@ -16,6 +16,7 @@ import type { DesktopItem, Folder, LibraryItem } from '@/bridge';
 import { useFocusable } from '@/focus';
 import { assetUrl } from '@/lib/assetUrl';
 import { useSettingsStore } from '@/store';
+import { Surface } from '@/surface';
 
 import { Icon } from '../Icon';
 import { FolderGlyph } from './FolderGlyph';
@@ -96,7 +97,9 @@ export function DesktopIcon({
   const art = entry ? assetUrl(entry.artwork.icon ?? entry.artwork.grid ?? undefined) : undefined;
 
   return (
-    <motion.button
+    <Surface
+      level="e1"
+      as={motion.button}
       ref={ref as React.Ref<HTMLButtonElement>}
       type="button"
       className="aura-desktop-icon"
@@ -133,6 +136,6 @@ export function DesktopIcon({
         )}
       </span>
       <span className="aura-desktop-icon-label">{label}</span>
-    </motion.button>
+    </Surface>
   );
 }

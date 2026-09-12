@@ -17,21 +17,38 @@ export function kebab(key: string): string {
 }
 
 /**
+ * How deep a token path may nest. `font.weight.label` is three, and nothing the format defines
+ * goes deeper; the cap is here so a malformed or hostile theme cannot walk forever.
+ */
+const MAX_TOKEN_DEPTH = 4;
+
+/**
  * Flatten to `{ '--color-accent': '#6ee7ff', ... }`.
+ *
+ * Nested groups join with dashes, so `font.weight.label` becomes `--font-weight-label` and
+ * `elevation.e1.shadow` becomes `--elevation-e1-shadow`. This used to walk exactly two levels,
+ * which silently dropped anything deeper - a theme could set `font.weight.label` and watch
+ * nothing happen.
+ *
  * Numbers are stringified as-is: unitless tokens like `tile.focusScale` must stay unitless.
  */
 export function flattenTokens(tokens: ThemeTokens | null | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   if (!tokens || typeof tokens !== 'object') return out;
 
-  for (const [group, values] of Object.entries(tokens)) {
-    if (!values || typeof values !== 'object') continue;
-    for (const [key, value] of Object.entries(values)) {
-      if (value === null || value === undefined) continue;
-      if (typeof value !== 'string' && typeof value !== 'number') continue;
-      out[`--${kebab(group)}-${kebab(key)}`] = String(value);
+  const walk = (value: unknown, path: string[]): void => {
+    if (value === null || value === undefined) return;
+    if (typeof value === 'string' || typeof value === 'number') {
+      // A bare value at the top level is not a token: every property is `group.key` at least.
+      if (path.length >= 2) out[`--${path.map(kebab).join('-')}`] = String(value);
+      return;
     }
-  }
+    if (typeof value !== 'object' || Array.isArray(value)) return;
+    if (path.length >= MAX_TOKEN_DEPTH) return;
+    for (const [key, child] of Object.entries(value)) walk(child, [...path, key]);
+  };
+
+  for (const [group, values] of Object.entries(tokens)) walk(values, [group]);
   return out;
 }
 

@@ -30,7 +30,9 @@ export type NavAction =
   | 'nextWindow'
   | 'prevWindow'
   /** Hop between the desktop and the focused window (and, from phase 5, the taskbar). */
-  | 'cycleRegion';
+  | 'cycleRegion'
+  /** F11: fullscreen on and off, as in every Windows browser and most games. */
+  | 'toggleFullscreen';
 
 /** Directions auto-repeat when held; discrete actions fire once per press. */
 export const REPEATABLE: ReadonlySet<NavAction> = new Set<NavAction>(['up', 'down', 'left', 'right']);
@@ -63,6 +65,9 @@ export function actionForKey(event: KeyLike): NavAction | null {
    */
   if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'Tab') {
     return event.shiftKey ? 'prevWindow' : 'nextWindow';
+  }
+  if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'F11') {
+    return 'toggleFullscreen';
   }
   if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'F6') {
     return 'cycleRegion';

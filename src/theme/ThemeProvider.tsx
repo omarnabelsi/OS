@@ -22,6 +22,7 @@ import type { ThemeBundle } from '@/bridge';
 import { errorMessage } from '@/store/errors';
 import { useSettingsStore } from '@/store';
 
+import { rewriteCssUrls, themeRoot } from './assets';
 import { cssVariables, focusScaleFrom } from './tokens';
 
 const STYLE_ELEMENT_ID = 'aura-theme-css';
@@ -100,12 +101,17 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.
       // Last in <head> so a theme can override base.css without !important.
       document.head.appendChild(style);
     }
-    style.textContent = css;
+    /*
+     * Relative `url(...)` is rewritten to point at the theme's own folder. Injected CSS resolves
+     * relative URLs against the page, so a theme's bundled font or image would otherwise be
+     * fetched from the app and silently fall back - see `rewriteCssUrls`.
+     */
+    style.textContent = rewriteCssUrls(css, themeRoot(bundle?.assetsDir));
 
     return () => {
       style?.remove();
     };
-  }, [bundle?.css]);
+  }, [bundle?.css, bundle?.assetsDir]);
 
   // ---- reduced motion -------------------------------------------------------------------------
   useEffect(() => {

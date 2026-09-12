@@ -57,6 +57,48 @@ function checkAsset(dir, rel, what) {
   }
 }
 
+/**
+ * Relative `url(...)` targets in a stylesheet.
+ *
+ * Skips what is already loadable or is not a file reference at all: a scheme of two or more
+ * characters (`data:`, `https:`, `asset:`), a protocol-relative or absolute path, and the `#id`
+ * form that points at an SVG filter in the same document. A single letter before the colon is
+ * *not* treated as a scheme, so `url(C:/...)` is caught as the absolute path it is.
+ */
+function cssUrls(css) {
+  const out = [];
+  for (const match of css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi)) {
+    const target = match[2].trim();
+    if (target === '' || /^(?:[a-z][a-z0-9+.-]+:|\/\/|\/|#)/i.test(target)) continue;
+    out.push(target);
+  }
+  return out;
+}
+
+/**
+ * Check one `url(...)` from `theme.css`. Mirrors `validate::css_asset`.
+ *
+ * Escaping the theme folder is fatal - it is the same path-traversal surface as folder shapes
+ * (docs/RISKS.md R5), and the UI turns these paths into asset URLs. A *missing* file is only a
+ * warning: the rule still applies and the browser falls back to the next font or shows no image,
+ * so it is not worth costing the author their theme.
+ */
+function checkCssAsset(dir, rel) {
+  const what = `theme.css \`url(${rel})\``;
+  if (isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) {
+    fail(`${what} must be a path relative to the theme folder`);
+    return;
+  }
+  if (rel.split(/[\\/]/).includes('..')) {
+    fail(`${what} escapes the theme folder`);
+    return;
+  }
+  const target = join(dir, rel);
+  if (!existsSync(target) || !statSync(target).isFile()) {
+    warn(`theme.css references \`${rel}\`, which is missing; anything using it falls back`);
+  }
+}
+
 function validate(dir) {
   const manifestPath = join(dir, 'manifest.json');
   if (!existsSync(manifestPath)) {
@@ -153,6 +195,15 @@ function validate(dir) {
       seen.add(id);
       checkAsset(dir, shape?.asset ?? '', `folder shape \`${id}\``);
     }
+  }
+
+  // theme.css may reference the theme's own files - a bundled font, a background image - and
+  // those paths get the same rules as the manifest's. The shell rewrites them to asset URLs as
+  // it injects the stylesheet (src/theme/assets.ts); an absolute path would point somewhere
+  // else on the machine entirely and never gets that treatment. Mirrors `validate::css_asset`.
+  const cssPath = join(dir, 'theme.css');
+  if (existsSync(cssPath)) {
+    for (const ref of cssUrls(readFileSync(cssPath, 'utf8'))) checkCssAsset(dir, ref);
   }
 
   // A theme with no backdrop blur must not leave the focused window translucent: with nothing

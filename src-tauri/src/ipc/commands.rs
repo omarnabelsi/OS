@@ -51,6 +51,25 @@ pub fn update_settings(
         }
     }
 
+    // `startFullscreen` is the fullscreen preference, and changing it in Settings applies it
+    // now: a toggle that only took effect at the next start read as broken. Never in a smoke
+    // run, which is windowed by definition.
+    if next.start_fullscreen != previous.start_fullscreen && !state.args.smoke {
+        if let Some(win) = shell_host::window::main_window(&app) {
+            if let Err(e) = shell_host::window::apply_fullscreen(
+                &win,
+                next.start_fullscreen,
+                next.always_on_top,
+                next.monitor_index,
+            ) {
+                log::warn!(
+                    "could not apply fullscreen = {}: {e}",
+                    next.start_fullscreen
+                );
+            }
+        }
+    }
+
     Ok(next)
 }
 
@@ -292,14 +311,47 @@ pub fn get_monitors(app: AppHandle) -> CmdResult<Vec<MonitorInfo>> {
     shell_host::monitors::list(&app).map_err(|e| CoreError::Other(e.to_string()))
 }
 
+/// Enter or leave fullscreen, and remember the choice.
+///
+/// Persisted as `startFullscreen`, because this is the user deciding how the shell should be,
+/// not a one-off: it used to change only the live window, so an F11 was forgotten at the next
+/// start. A `--smoke` run never writes it - CI must not change anyone's preference.
 #[tauri::command]
-pub fn set_fullscreen(window: WebviewWindow, fullscreen: bool) -> CmdResult<()> {
-    window
-        .set_fullscreen(fullscreen)
-        .map_err(|e| CoreError::Other(e.to_string()))?;
-    // So minimise-for-launch and restore-after-launch agree with what the UI just asked for.
-    shell_host::window::remember_fullscreen(fullscreen);
+pub fn set_fullscreen(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    fullscreen: bool,
+) -> CmdResult<()> {
+    let settings = state.core.settings();
+    shell_host::window::apply_fullscreen(
+        &window,
+        fullscreen,
+        settings.always_on_top,
+        settings.monitor_index,
+    )
+    .map_err(|e| CoreError::Other(e.to_string()))?;
+    if !state.args.smoke && settings.start_fullscreen != fullscreen {
+        state
+            .core
+            .update_settings(serde_json::json!({ "startFullscreen": fullscreen }))?;
+    }
     Ok(())
+}
+
+/// The native window's state, for the shell's title bar: drawn only when not fullscreen, and
+/// showing "restore" rather than "maximise" while maximised.
+#[tauri::command]
+pub fn get_window_state(window: WebviewWindow) -> shell_host::window::ShellWindowState {
+    shell_host::window::window_state(&window)
+}
+
+/// Maximise or restore the windowed shell. Never fullscreen - see
+/// `shell_host::window::toggle_maximize` for why the two do not share a button.
+#[tauri::command]
+pub fn toggle_maximize_shell(
+    window: WebviewWindow,
+) -> CmdResult<shell_host::window::ShellWindowState> {
+    shell_host::window::toggle_maximize(&window).map_err(|e| CoreError::Other(e.to_string()))
 }
 
 /// The UI calls this once its first frame is painted; the window is created hidden to avoid a

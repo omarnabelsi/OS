@@ -169,3 +169,4 @@ progress and launch events - so every screen can be built and demoed in a browse
 | A new screen | `src/screens/`, add to `NAV_ITEMS` in `store/ui.ts` and the switch in `screens/index.tsx` |
 | A new kind of window | A `WindowKind` in `wm/store.ts` + a renderer in `WINDOW_BODIES` (`Shell.tsx`); everything inside registers in the `window:<id>` focus group |
 | A new navigation action | `NavAction` in `input/actions.ts`, a binding, then a case in `InputProvider` |
+| A native window operation | `shell_host::window`, which owns every change to the window, then a command and the bridge and mock. Never `@tauri-apps/api/window` from the UI - it would split window logic across two layers and be untestable in the browser |

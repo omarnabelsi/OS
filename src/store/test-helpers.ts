@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Hand-written fake `AuraApi` + fixtures for the store tests. Tests mock '@/bridge' with
  * `{ api: fakeApi, onCoreEvent, emitLocal }` where the event functions come from the real
  * '@/bridge/events' local emitter (so `emitLocal(...)` drives the stores exactly like the mock
@@ -26,6 +26,7 @@ export const baseSettings: Settings = {
   monitorIndex: null,
   gamepadEnabled: true,
   reduceMotion: false,
+  blurMode: 'auto',
   scanOnStartup: true,
   language: 'en',
   taskbarVisible: true,
@@ -116,6 +117,8 @@ export const fakeApi: FakeApi = {
   shellReady: vi.fn(),
   exitShell: vi.fn(),
   minimizeShell: vi.fn(),
+  getWindowState: vi.fn(),
+  toggleMaximizeShell: vi.fn(),
   pickFile: vi.fn(),
 };
 
@@ -172,6 +175,9 @@ export function resetFakeApi(): void {
   fakeApi.shellReady.mockResolvedValue(undefined);
   fakeApi.exitShell.mockResolvedValue(undefined);
   fakeApi.minimizeShell.mockResolvedValue(undefined);
+  // Windowed, so a test that renders the shell's title bar sees it.
+  fakeApi.getWindowState.mockResolvedValue({ fullscreen: false, maximized: false, minimized: false });
+  fakeApi.toggleMaximizeShell.mockResolvedValue({ fullscreen: false, maximized: true, minimized: false });
   fakeApi.pickFile.mockResolvedValue(null);
 }
 

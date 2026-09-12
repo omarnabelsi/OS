@@ -46,6 +46,10 @@ editor. Settings is a window too, with a search box that finds any setting; the 
 any edge. Two themes ship — **Aura** (dark glass) and **Paper** (a light desk) — switch between them
 in Settings → Appearance → Theme.
 
+Aura Shell opens fullscreen at your display's native resolution. **F11** switches it to a window —
+with its own title bar to move, maximise, minimise or close it — and back again, and the choice is
+remembered for next time.
+
 ## Build the real thing
 
 Needs Rust (stable) and the MSVC build tools — see [DEVELOPMENT.md](docs/DEVELOPMENT.md).

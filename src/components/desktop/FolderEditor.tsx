@@ -105,7 +105,7 @@ export function FolderEditor({ window: win }: { window: WindowInstance }): React
       {/* The preview is the reason this is a window. It is the real glyph, not a mock-up. */}
       <div className="aura-editor-preview">
         <FolderGlyph folder={folder} />
-        <span className="aura-editor-preview-label">{folder.label ?? 'Untitled folder'}</span>
+        <span className="aura-editor-preview-label aura-type-folder-label">{folder.label ?? 'Untitled folder'}</span>
       </div>
 
       <Field label="Name">
@@ -263,7 +263,7 @@ function Field({
 }): React.JSX.Element {
   return (
     <section className="aura-editor-field">
-      <h3>{label}</h3>
+      <h3 className="aura-type-section">{label}</h3>
       {children}
       {hint ? <p className="aura-editor-hint">{hint}</p> : null}
     </section>

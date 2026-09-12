@@ -1,12 +1,17 @@
-//! Main window lifecycle: fullscreen/windowed setup, hide-on-launch / restore-on-exit.
+//! Main window lifecycle: fullscreen/windowed setup, maximise, hide-on-launch / restore-on-exit.
 //!
-//! STATUS: first implementation - owner shell-host agent verifies against Tauri 2 API and
-//! hardens multi-monitor + DPI behaviour.
+//! Every change to the native window's state goes through this module. The UI never calls
+//! `@tauri-apps/api/window` itself; it asks for a command, and the command asks here, so the
+//! rules about topmost, size and remembered state live in exactly one place.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use aura_core::Settings;
-use tauri::{AppHandle, Listener, LogicalSize, Manager, WebviewWindow};
+use serde::Serialize;
+use tauri::{
+    AppHandle, Listener, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewWindow,
+};
 
 use super::args::Args;
 
@@ -30,6 +35,26 @@ const WINDOWED_FALLBACK: (f64, f64) = (1600.0, 900.0);
 /// `configure_main_window` and re-read by `restore_after_launch`.
 static WAS_FULLSCREEN: AtomicBool = AtomicBool::new(false);
 
+/// Where the windowed shell was the last time it went fullscreen, to come back to on the way out.
+///
+/// Needed because the window is *created* fullscreen (tauri.conf.json), so the size the OS would
+/// restore on leaving fullscreen is the config's 1920x1080 fallback - larger than the entire
+/// desktop on a 1366x768 laptop. With nothing remembered yet, leaving fullscreen falls back to a
+/// size proportional to the monitor instead.
+static LAST_WINDOWED: Mutex<Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>> = Mutex::new(None);
+
+/// What the UI needs to know about the native window.
+///
+/// The shell's title bar is drawn only while `fullscreen` is false, and shows "restore" rather
+/// than "maximise" while `maximized` is true.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellWindowState {
+    pub fullscreen: bool,
+    pub maximized: bool,
+    pub minimized: bool,
+}
+
 pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN)
 }
@@ -39,10 +64,18 @@ pub fn wants_fullscreen(settings: &Settings, args: &Args) -> bool {
     settings.start_fullscreen && !args.windowed && !args.smoke
 }
 
-/// Record a fullscreen change made outside `configure_main_window` - the `set_fullscreen` command
-/// - so a launch and restore round trip still brings the window back the way the user left it.
+/// Record a fullscreen change, so a launch-and-restore round trip brings the window back the way
+/// the user left it.
 pub fn remember_fullscreen(fullscreen: bool) {
     WAS_FULLSCREEN.store(fullscreen, Ordering::SeqCst);
+}
+
+pub fn window_state(win: &WebviewWindow) -> ShellWindowState {
+    ShellWindowState {
+        fullscreen: win.is_fullscreen().unwrap_or(false),
+        maximized: win.is_maximized().unwrap_or(false),
+        minimized: win.is_minimized().unwrap_or(false),
+    }
 }
 
 /// A windowed size proportional to the target monitor rather than a hard-coded 720p, clamped so
@@ -110,6 +143,61 @@ pub fn configure_main_window(
         win.center()?;
     }
     Ok(())
+}
+
+/// Enter or leave fullscreen and leave the window in a state that matches.
+///
+/// One function because several callers need exactly this - the `set_fullscreen` command and a
+/// settings change - and they must agree about topmost and about what size the window comes back
+/// at. Leaving fullscreen restores the windowed geometry from before it was entered.
+pub fn apply_fullscreen(
+    win: &WebviewWindow,
+    fullscreen: bool,
+    always_on_top: bool,
+    monitor_index: Option<u32>,
+) -> tauri::Result<()> {
+    let currently = win.is_fullscreen().unwrap_or(false);
+    if fullscreen {
+        if !currently && !win.is_maximized().unwrap_or(false) {
+            if let (Ok(pos), Ok(size)) = (win.outer_position(), win.inner_size()) {
+                *LAST_WINDOWED.lock().unwrap_or_else(|e| e.into_inner()) = Some((pos, size));
+            }
+        }
+        win.set_fullscreen(true)?;
+    } else if currently {
+        win.set_fullscreen(false)?;
+        let remembered = *LAST_WINDOWED.lock().unwrap_or_else(|e| e.into_inner());
+        match remembered {
+            Some((pos, size)) => {
+                win.set_size(size)?;
+                win.set_position(pos)?;
+            }
+            None => {
+                win.set_size(windowed_size(win, monitor_index))?;
+                win.center()?;
+            }
+        }
+    }
+    // Topmost only makes sense fullscreen; `configure_main_window` makes the same choice.
+    win.set_always_on_top(fullscreen && always_on_top)?;
+    remember_fullscreen(fullscreen);
+    Ok(())
+}
+
+/// Maximise or restore the *windowed* shell - the title bar's middle button.
+///
+/// Deliberately not fullscreen. Fullscreen is its own setting (Settings, F11) and the title bar
+/// is not drawn in fullscreen at all, so the two meanings never share one button. Asked while
+/// fullscreen, this changes nothing rather than guessing which of the two was meant.
+pub fn toggle_maximize(win: &WebviewWindow) -> tauri::Result<ShellWindowState> {
+    if !win.is_fullscreen()? {
+        if win.is_maximized()? {
+            win.unmaximize()?;
+        } else {
+            win.maximize()?;
+        }
+    }
+    Ok(window_state(win))
 }
 
 /// Show + focus after the UI's first paint.

@@ -27,6 +27,7 @@ import type {
   Settings,
   SettingsPatch,
   Source,
+  ShellWindowState,
   SystemStatus,
   TaskbarItem,
   ThemeBundle,
@@ -96,11 +97,16 @@ export interface AuraApi {
   /** Whether the exit hotkey is actually claimed from the OS, not just stored in Settings. */
   getExitHotkeyStatus(): Promise<ExitHotkeyStatus>;
   getMonitors(): Promise<MonitorInfo[]>;
+  /** Enter or leave fullscreen now, and remember it as the preference (`startFullscreen`). */
   setFullscreen(fullscreen: boolean): Promise<void>;
   /** Call once after first paint; shows the (initially hidden) window. */
   shellReady(): Promise<void>;
   exitShell(): Promise<void>;
   minimizeShell(): Promise<void>;
+  /** The native window's state. The shell's title bar is drawn only when it is not fullscreen. */
+  getWindowState(): Promise<ShellWindowState>;
+  /** Maximise or restore the *windowed* shell. Never fullscreen - that is `setFullscreen`. */
+  toggleMaximizeShell(): Promise<ShellWindowState>;
 
   // host dialogs (plugin-dialog in Tauri, <input type=file> shim in the mock)
   pickFile(kind: 'exe' | 'image' | 'video' | 'any'): Promise<string | null>;

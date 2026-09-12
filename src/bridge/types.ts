@@ -69,12 +69,23 @@ export interface Settings {
   monitorIndex: number | null;
   gamepadEnabled: boolean;
   reduceMotion: boolean;
+  blurMode: BlurMode;
   scanOnStartup: boolean;
   language: string;
   taskbarVisible: boolean;
   taskbarPosition: TaskbarPosition;
   taskbarAlignment: TaskbarAlignment;
 }
+
+/**
+ * How much backdrop blur the shell may use.
+ *
+ * `auto` measures the frame rate and steps down when it has to: desktop items lose their blur
+ * first, then the whole app moves to a static snapshot of the field. `full` never steps down,
+ * `off` never blurs. A theme with `blur.surface: 0` overrides all three - see
+ * `src/surface/engine.ts`.
+ */
+export type BlurMode = 'auto' | 'full' | 'off';
 
 /**
  * Which edge Aura's own taskbar is docked to. The real Windows taskbar is never moved or
@@ -331,6 +342,16 @@ export interface SystemStatus {
   hasBattery: boolean;
 }
 
+/**
+ * The shell's own native window. The title bar is drawn only while `fullscreen` is false, and
+ * shows "restore" rather than "maximise" while `maximized` is true.
+ */
+export interface ShellWindowState {
+  fullscreen: boolean;
+  maximized: boolean;
+  minimized: boolean;
+}
+
 // ---- events payloads ------------------------------------------------------------------------
 
 export type ScanStage = 'queued' | 'discovering' | 'parsing' | 'saving' | 'done' | 'error';
@@ -468,6 +489,14 @@ export interface ThemeInfo {
 }
 
 /** Shape of tokens.json. Kept loose on purpose: themes may add keys, the UI reads what it knows. */
+/**
+ * A token value, or a nested group of them.
+ *
+ * Groups nest: `font.weight.label` and `elevation.e1.shadow` both become custom properties
+ * (`--font-weight-label`, `--elevation-e1-shadow`). See `flattenTokens`.
+ */
+export type ThemeTokenValue = string | number | { [key: string]: ThemeTokenValue };
+
 export interface ThemeTokens {
   color?: Record<string, string>;
   radius?: Record<string, string | number>;
@@ -475,9 +504,10 @@ export interface ThemeTokens {
   spacing?: Record<string, string | number>;
   easing?: Record<string, string>;
   duration?: Record<string, string | number>;
+  elevation?: Record<string, ThemeTokenValue>;
   tile?: Record<string, string | number>;
-  font?: Record<string, string>;
-  [group: string]: Record<string, string | number> | undefined;
+  font?: Record<string, ThemeTokenValue>;
+  [group: string]: Record<string, ThemeTokenValue> | undefined;
 }
 
 /** A folder shape a theme offers the folder editor. `asset` is relative to the theme folder. */

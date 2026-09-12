@@ -76,7 +76,9 @@ const FocusContext = createContext<FocusContextValue | null>(null);
  * but on a desktop with no icons it is the only thing registered, and the first focus of the
  * session must not park on it and stay there once a surface appears.
  */
-const CHROME_GROUPS: ReadonlySet<string> = new Set(['nav', 'taskbar']);
+// The shell's title bar (windowed only) is chrome too: reachable with Up from the nav bar,
+// never where the first focus of a session lands.
+const CHROME_GROUPS: ReadonlySet<string> = new Set(['nav', 'taskbar', 'titlebar']);
 
 const isChrome = (group: string | undefined): boolean => group !== undefined && CHROME_GROUPS.has(group);
 

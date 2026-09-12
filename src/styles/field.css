@@ -1,0 +1,149 @@
+/**
+ * The aurora field - the ground everything in the shell sits on (elevation e0).
+ *
+ * Four stacked layers, and the order is the whole trick:
+ *
+ *   1. primary aurora   - four radials, drifting over 68s
+ *   2. secondary drift  - two softer radials, drifting over 104s the other way
+ *   3. vignette         - darkened top and bottom, so text always has ground to sit on
+ *   4. grain            - a fine noise tile at 5.5% over the lot
+ *
+ * The two drift periods are deliberately not multiples of each other. Each layer alternates, so
+ * one repeats every 136s and the other every 208s; together they do not return to the same
+ * arrangement for nearly an hour, which is what stops the motion reading as a loop.
+ *
+ * The grain is what makes the result look rendered rather than like a CSS gradient. Gradients
+ * band on a dark field - eight-bit steps across a large area are visible as rings - and a little
+ * noise dithers those steps away.
+ *
+ * **Drift is done with `transform`, not `background-position`.** The design describes the motion
+ * as a background sized 170% and moved around; animating `background-position` would repaint
+ * four full-screen radial gradients every frame, which is exactly the cost the elevation ladder
+ * was shaped to avoid. An oversized layer moved by `translate3d` is the same picture, composited
+ * on the GPU, and leaves the frame budget for the surfaces above it.
+ */
+
+.aura-field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* Under the gradients, so a field that fails to paint is still the theme's colour. */
+  background: var(--color-background);
+}
+
+/*
+ * Each drifting layer is larger than the screen by its slack, and offset by half of it, so it
+ * still covers the viewport at either end of the travel.
+ */
+.aura-field-layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+.aura-field-primary,
+.aura-field-secondary {
+  will-change: transform;
+}
+
+/*
+ * 170% of the screen: 35% of slack on every side.
+ *
+ * Positions are in *layer* coordinates, which are not viewport coordinates - the viewport only
+ * occupies the middle 58.8% of this layer (20.6% to 79.4%). Writing the design's viewport
+ * fractions here directly put three of the four blob centres off-screen, and all you saw was
+ * their outer edges: a field far darker and flatter than the design. Each position below is the
+ * design's intent mapped through `20.6% + v * 58.8%`, and each size is scaled the same way.
+ */
+.aura-field-primary {
+  inset: -35%;
+  background-image:
+    radial-gradient(40% 36% at 31% 33%, var(--aurora-1), transparent 70%),
+    radial-gradient(38% 34% at 69% 31%, var(--aurora-2), transparent 72%),
+    radial-gradient(36% 32% at 37% 70%, var(--aurora-3), transparent 70%),
+    radial-gradient(30% 28% at 65% 67%, var(--aurora-4), transparent 68%);
+  animation: aura-field-drift 68s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+/*
+ * 200%: 50% of slack, so the viewport is the middle half (25% to 75%), and a slower, plainer
+ * travel - this is the layer you are not meant to notice.
+ */
+.aura-field-secondary {
+  inset: -50%;
+  background-image:
+    radial-gradient(40% 36% at 60% 42%, var(--aurora-5), transparent 72%),
+    radial-gradient(38% 34% at 37% 55%, var(--aurora-6), transparent 74%);
+  animation: aura-field-drift-slow 104s linear infinite alternate;
+}
+
+@keyframes aura-field-drift {
+  from {
+    transform: translate3d(-6%, -4%, 0) scale(1.02);
+  }
+  to {
+    transform: translate3d(6%, 4%, 0) scale(1.06);
+  }
+}
+
+@keyframes aura-field-drift-slow {
+  from {
+    transform: translate3d(5%, -3%, 0);
+  }
+  to {
+    transform: translate3d(-5%, 3%, 0);
+  }
+}
+
+/*
+ * Darker top and bottom: the nav bar and the taskbar both sit on this, and their text needs it.
+ * Kept tight to the edges - reaching further in washes the aurora out of the middle of the
+ * screen, which is the part the design is actually about.
+ */
+.aura-field-vignette {
+  inset: 0;
+  background-image:
+    radial-gradient(
+      130% 42% at 50% -6%,
+      color-mix(in srgb, var(--color-background) 72%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      130% 44% at 50% 106%,
+      color-mix(in srgb, var(--color-background) 78%, transparent),
+      transparent 68%
+    );
+}
+
+/*
+ * The grain sits over everything and must never be in the way of a pointer - it covers the whole
+ * screen, so intercepting a click would make the desktop inert.
+ */
+.aura-field-grain {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.055;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/**
+ * Reduced motion freezes the drift and keeps the field.
+ *
+ * Both spellings, because they mean different things: the media query is the OS setting, and the
+ * attribute is Aura's own toggle for someone who wants the shell still without changing Windows.
+ * Frozen mid-travel rather than at the start, so the still field is the one the design shows.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .aura-field-primary,
+  .aura-field-secondary {
+    animation: none;
+    transform: translate3d(0, 0, 0) scale(1.04);
+  }
+}
+
+:root[data-reduce-motion] .aura-field-primary,
+:root[data-reduce-motion] .aura-field-secondary {
+  animation: none;
+  transform: translate3d(0, 0, 0) scale(1.04);
+}

@@ -8,19 +8,28 @@
 /* Shell layout. Loaded after the tokens below so it can rely on them; the active theme's
    theme.css is injected after both by ThemeProvider. */
 @import './shell.css';
+/* The aurora field - elevation e0, the ground everything else is raised above. */
+@import './field.css';
+/* The elevation ladder. After shell.css so a level's shadow and tint beat any structural rule
+   left on the same element. */
+@import './elevation.css';
+/* The type roles. After shell.css on purpose: a role class and a structural rule for the same
+   element have equal specificity, so the role has to come last to win. */
+@import './type.css';
 
 /*
- * Inter, bundled.
+ * Inter, bundled as the fallback face.
  *
- * Nothing was shipped before, so `--font-ui` resolved to whatever each machine happened to have:
- * Segoe UI Variable on Windows 11, Segoe UI on Windows 10, something else again on a dev
+ * Nothing was shipped before, so `--font-family` resolved to whatever each machine happened to
+ * have: Segoe UI Variable on Windows 11, Segoe UI on Windows 10, something else again on a dev
  * machine - each with different cap-height, x-height and default line metrics. That is why
- * spacing tuned on one machine clipped on another. Bundling one file makes text render
- * identically everywhere, which is what makes the line-heights below meaningful.
+ * spacing tuned on one machine clipped on another.
  *
- * Variable weight axis (100-900), so every weight the UI uses comes from this single 344 KB
- * file. Vite fingerprints and inlines the URL at build time, and the CSP already allows
- * `font-src 'self'`. SIL Open Font License 1.1 - see assets/fonts/LICENSE.txt.
+ * The *themes* bundle their own face (aura-default ships Manrope, self-hosted, 200-800). This one
+ * stays because the shell has to render before any theme has loaded, and has to keep rendering if
+ * a theme fails to load at all. Variable weight axis 100-900 from a single 344 KB file; Vite
+ * fingerprints the URL at build time and the CSP already allows `font-src 'self'`.
+ * SIL Open Font License 1.1 - see assets/fonts/LICENSE.txt.
  */
 @font-face {
   font-family: 'InterVariable';
@@ -46,6 +55,7 @@
   --radius-md: 16px;
   --radius-lg: 28px;
   --radius-tile: 18px;
+  --radius-folder-capsule: 56px;
 
   --blur-background: 24px;
   --blur-surface: 18px;
@@ -60,29 +70,102 @@
   --duration-base: 220ms;
   --duration-slow: 420ms;
 
+  /*
+   * The elevation ladder (docs/THEME_FORMAT.md). Depth is carried mostly by shadow spread and
+   * surface alpha because blur is the most expensive thing the shell draws; `--elevation-*-blur`
+   * is what a surface asks for, not what it necessarily gets - see the blur budget.
+   */
+  --elevation-e1-shadow: 0 22px 46px -22px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --elevation-e1-surface: rgba(255, 255, 255, 0.06);
+  --elevation-e1-blur: 18px;
+  --elevation-e2-shadow: 0 26px 64px -26px rgba(0, 0, 0, 0.9);
+  --elevation-e2-surface: rgba(255, 255, 255, 0.06);
+  --elevation-e2-blur: 18px;
+  --elevation-e3-shadow: 0 70px 130px -40px rgba(0, 0, 0, 0.95);
+  --elevation-e3-surface: rgba(18, 21, 30, 0.72);
+  --elevation-e3-blur: 24px;
+  --elevation-e4-shadow: 0 80px 140px -40px rgba(0, 0, 0, 0.98);
+  --elevation-e4-surface: rgba(18, 21, 30, 0.82);
+  --elevation-e4-blur: 24px;
+  --elevation-e4-scrim: rgba(4, 6, 12, 0.55);
+
+  --window-radius: 28px;
+  --window-title-bar-height: 64px;
+  --window-control-size: 40px;
+  --window-control-radius: 12px;
+  --window-resize-grab: 8px;
+  /*
+   * How much of the e3 tint a focused window gets. 100% is the token as written - the 72% the
+   * design asks for now lives in `--elevation-e3-surface`, so this dial is free to mean "less
+   * glass than the theme's default" and a theme with no blur can set it and stay legible.
+   */
+  --window-opacity: 100%;
+  --window-title-align: left;
+
+  --taskbar-height: 76px;
+  --taskbar-icon-size: 56px;
+  --taskbar-radius: 28px;
+  --taskbar-margin: 28px;
+  --taskbar-size: 4.75rem;
+  --taskbar-inset: 28px;
+
+  --folder-shape: rounded;
+  --folder-tint-alpha: 0.2;
+  --folder-art-width: 216px;
+  --folder-art-height: 152px;
+
+  --desktop-cell: 96px;
+  --desktop-gap: 16px;
+  --desktop-icon-size: 56px;
+  --desktop-grid-cell-w: 259px;
+  --desktop-grid-cell-h: 240px;
+  --desktop-column-gap: 24px;
+  --desktop-row-gap: 40px;
+
   --tile-width: 220px;
   --tile-aspect: 2 / 3;
   --tile-focus-scale: 1.08;
   --tile-gap: 20px;
 
   /*
-   * 'InterVariable' is the bundled face declared above, so it always resolves and the metrics
-   * are identical on every machine. The rest is a fallback chain for the moment before the font
-   * decodes, or if a theme replaces the file.
+   * `--font-family` is the token a theme sets (`font.family`). `--font-ui` is the older name,
+   * kept so a theme written against it still works: everything reads
+   * `var(--font-family, var(--font-ui))`, so whichever of the two a theme sets is the one used.
    *
-   * Note 'Segoe UI Variable' is deliberately absent: it is not a real family name (Windows 11
-   * installs "Segoe UI Variable Text"/"Display"/"Small"), so the old stack's first entry never
-   * matched anything on any machine.
-   *
-   * Keep this in sync with `font.ui` in themes/aura-default/tokens.json, which overrides it.
+   * 'Manrope' is what aura-default bundles; 'InterVariable' is the face above, which always
+   * resolves, so text has correct metrics before a theme's font has decoded. 'Segoe UI Variable'
+   * is deliberately absent: it is not a real family name (Windows 11 installs "Segoe UI Variable
+   * Text"/"Display"/"Small"), so it never matched anything on any machine.
    */
-  --font-ui: 'InterVariable', 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui,
-    -apple-system, 'Helvetica Neue', Arial, sans-serif;
-  --font-display: var(--font-ui);
+  --font-ui: 'Manrope', 'InterVariable', 'Inter', 'Segoe UI', system-ui, -apple-system,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-display: var(--font-family, var(--font-ui));
+
+  /* Weights, so a theme can shift the whole hierarchy without touching a component. */
+  --font-weight-display: 250;
+  --font-weight-title: 600;
+  --font-weight-label: 600;
+  --font-weight-meta: 500;
+  --font-weight-section: 700;
+
+  /*
+   * The aurora field. Four radials over the background, and the single definition of what the
+   * field is made of: the CSS layers in field.css paint them, and the blur snapshot in
+   * `src/surface/snapshot.ts` reads these same properties so the cheap fallback and the real
+   * thing cannot drift apart.
+   */
+  --aurora-1: rgba(110, 231, 255, 0.26);
+  --aurora-2: rgba(118, 108, 255, 0.23);
+  --aurora-3: rgba(46, 196, 182, 0.17);
+  --aurora-4: rgba(255, 110, 160, 0.07);
+  --aurora-5: rgba(110, 231, 255, 0.1);
+  --aurora-6: rgba(118, 108, 255, 0.09);
 
   /* Runtime, not theme: set by the UI. */
   --ui-scale: 1;
   --accent-bleed: var(--color-accent);
+  /* Replaced with a `url(...)` while the app is in snapshot mode; see src/surface/snapshot.ts. */
+  --surface-snapshot: none;
 }
 
 /*
@@ -110,7 +193,7 @@ body,
   overflow: hidden;
   background: var(--color-background);
   color: var(--color-text);
-  font-family: var(--font-ui);
+  font-family: var(--font-family, var(--font-ui));
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;

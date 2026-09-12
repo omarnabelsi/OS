@@ -128,7 +128,7 @@ export function FolderWindowBody({ window: win }: { window: WindowInstance }): R
   return (
     <div className="aura-folder" data-layout={layout}>
       <div className="aura-folder-bar">
-        <span className="aura-folder-count">
+        <span className="aura-folder-count aura-type-window-subtitle">
           {loading ? 'Loading…' : `${items.length} ${items.length === 1 ? 'item' : 'items'}`}
         </span>
 
@@ -273,7 +273,7 @@ function ListRow({
       {item.stats.favourite ? (
         <Icon name="star" size="0.85em" title="Favourite" />
       ) : null}
-      <span className="aura-folder-row-meta">{playtime(item.stats.playtimeSecs)}</span>
+      <span className="aura-folder-row-meta aura-type-tile-meta">{playtime(item.stats.playtimeSecs)}</span>
     </button>
   );
 }

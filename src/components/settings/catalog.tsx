@@ -12,6 +12,7 @@
 import type { ReactNode } from 'react';
 
 import type {
+  BlurMode,
   ExitHotkeyStatus,
   Settings,
   TaskbarAlignment,
@@ -53,6 +54,13 @@ export function Toggle({ on }: { on: boolean }): React.JSX.Element {
 const TILE_SIZES: TileSize[] = ['small', 'medium', 'large'];
 const TASKBAR_POSITIONS: TaskbarPosition[] = ['bottom', 'top', 'left', 'right'];
 const TASKBAR_ALIGNMENTS: TaskbarAlignment[] = ['center', 'start'];
+const BLUR_MODES: BlurMode[] = ['auto', 'full', 'off'];
+/** Said in terms of what the user sees, not the mode's name. */
+const BLUR_LABELS: Record<BlurMode, string> = {
+  auto: 'Automatic',
+  full: 'Always on',
+  off: 'Off',
+};
 
 /**
  * Combinations Windows will hand to an application, cycled by activating the Exit hotkey row.
@@ -193,6 +201,19 @@ export function buildCatalog(ctx: CatalogContext): SettingsCategory[] {
           value: <Toggle on={settings.reduceMotion} />,
           onActivate: () => set({ reduceMotion: !settings.reduceMotion }),
         },
+        {
+          id: 'blurMode',
+          icon: 'settings',
+          label: 'Background blur',
+          hint: 'Automatic drops blur when the frame rate cannot hold it',
+          keywords: 'glass frosted performance fps transparency acrylic',
+          value: BLUR_LABELS[settings.blurMode],
+          onAdjust: (direction) => set({ blurMode: shift(BLUR_MODES, settings.blurMode, direction) }),
+          onActivate: () => {
+            const at = BLUR_MODES.indexOf(settings.blurMode);
+            set({ blurMode: BLUR_MODES[(at + 1) % BLUR_MODES.length]! });
+          },
+        },
       ],
     },
     {
@@ -275,8 +296,10 @@ export function buildCatalog(ctx: CatalogContext): SettingsCategory[] {
         {
           id: 'startFullscreen',
           icon: 'home',
-          label: 'Start fullscreen',
-          keywords: 'window borderless maximised',
+          label: 'Fullscreen',
+          // Applied at once and remembered: the host acts on a change to `startFullscreen`.
+          hint: "Borderless at the display's full resolution. F11 switches it too.",
+          keywords: 'window windowed borderless maximised f11 resolution',
           value: <Toggle on={settings.startFullscreen} />,
           onActivate: () => set({ startFullscreen: !settings.startFullscreen }),
         },

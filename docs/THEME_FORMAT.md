@@ -96,16 +96,18 @@ partial theme still renders:
 | Group | Keys |
 | --- | --- |
 | `color` | `background` `surface` `surfaceStrong` `text` `textMuted` `accent` `accentContrast` `focusRing` `danger` |
-| `radius` | `sm` `md` `lg` `tile` |
+| `radius` | `sm` `md` `lg` `tile` `folderCapsule` |
 | `blur` | `background` `surface` |
 | `spacing` | `edge` `gutter` `row` |
 | `easing` | `standard` `emphasized` |
 | `duration` | `fast` `base` `slow` |
 | `tile` | `width` `aspect` `focusScale` `gap` `widthSmall` `widthMedium` `widthLarge` |
-| `desktop` | `cell` `gap` `iconSize` `labelSize` `labelMaxLines` |
-| `window` | `radius` `titleBarHeight` `resizeGrab` `opacity` `titleAlign` |
-| `taskbar` | `size` `radius` `inset` |
-| `font` | `ui` `display` |
+| `desktop` | `cell` `gap` `iconSize` `labelSize` `labelMaxLines` `gridCellW` `gridCellH` `columnGap` `rowGap` |
+| `window` | `radius` `titleBarHeight` `controlSize` `controlRadius` `resizeGrab` `opacity` `titleAlign` |
+| `taskbar` | `edge` `align` `height` `iconSize` `radius` `margin` `size` `inset` |
+| `elevation` | `e1`-`e4`, each with `shadow` `surface` `blur`; `e4` also `scrim` |
+| `folder` | `shape` `tintAlpha` `artWidth` `artHeight` |
+| `font` | `family` `display`, and `weight.display` `weight.title` `weight.label` `weight.meta` `weight.section` |
 
 `tile.widthSmall/Medium/Large` back the tile-size setting: the chosen one is written to
 `--tile-width`. Bare numbers get `px` appended.
@@ -119,12 +121,36 @@ with a mouse and impossible with a trackpad. The *minimum* window size is not a 
 fixed floor in `src/wm/geometry.ts`, because a theme should not be able to ship a window too
 small to use.
 
-`window.opacity` is how much of the background colour is in the *focused* window's fill. Below
-`100%` the focused window is glass: translucent, over a `blur.surface` backdrop blur. **A theme
-that sets `blur.surface` to `0px` must set `window.opacity` to `100%`** - translucency with no blur
-behind it shows the desktop icons straight through the window, which reads as a rendering fault
-rather than as depth. Both validators warn about that combination. Unfocused windows are always
-opaque, for the same reason. `window.titleAlign` is `left` or `center`.
+`window.opacity` scales the `elevation.e3.surface` tint a *focused* window is filled with. At
+`100%` the fill is exactly that token; below it the window is thinner glass. **A theme that sets
+`blur.surface` to `0px` must set `window.opacity` to `100%`** - translucency with no blur behind
+it shows the desktop icons straight through the window, which reads as a rendering fault rather
+than as depth. Both validators warn about that combination. Unfocused windows are always opaque,
+for the same reason. `window.titleAlign` is `left` or `center`.
+
+### The elevation ladder
+
+Everything raised in the shell is one of five levels, and the level decides all three of its
+shadow, its tint and how much blur it asks for:
+
+| Level | What it is |
+| --- | --- |
+| `e0` | the desktop field - the thing everything else is raised above |
+| `e1` | a desktop item |
+| `e2` | the taskbar |
+| `e3` | a window (only the focused one gets glass) |
+| `e4` | an overlay, plus its `scrim` |
+
+The ladder is deliberately shadow-heavy and blur-light. `backdrop-filter` is the most expensive
+thing the shell draws, so at most **three** surfaces blur at once, and a theme's
+`elevation.*.blur` is what a surface *asks* for rather than what it necessarily gets: when the
+cap binds, desktop items go flat first, and on a machine that cannot hold the frame rate the whole
+app falls back to one shared static snapshot of the field. A surface that is refused keeps its
+tint, which is why `elevation.*.surface` has to look right on its own - see the flat `aura-paper`
+ladder for a theme where it always is.
+
+`blur.surface: 0` turns the whole mechanism off. Set it, set `window.opacity` to `100%`, and give
+the levels opaque surfaces; the shadows then carry the depth by themselves.
 
 `taskbar.inset` and `taskbar.radius` are the whole difference between a bar docked flush to the
 edge (both `0px`) and a floating card: the inset lifts it off the edge and the radius rounds it.
@@ -137,6 +163,43 @@ and an image wallpaper instead of a shader - and it is nothing but a manifest, `
 `layout.json`, `theme.css` and SVGs. Folder shapes are per theme: a folder whose shape the active
 theme does not offer is drawn with that theme's first shape, so switching theme restyles existing
 folders rather than leaving them all on the generic fallback.
+
+### Nested groups, and the type scale
+
+Groups nest up to three levels: `font.weight.label` becomes `--font-weight-label`, and
+`elevation.e1.shadow` becomes `--elevation-e1-shadow`. Deeper than that is ignored rather than
+flattened into an unreadable name.
+
+`font.family` is the family stack. The older `font.ui` still works - everything reads
+`var(--font-family, var(--font-ui))` - but new themes should set `family`. The weights carry more
+than they look like they do: the type hierarchy is one family at five weights, and the roles in
+`src/styles/type.css` read nothing else, so shifting `font.weight.*` re-pitches every clock,
+label, title and section header at once. Sizes there are in `rem`, which is what makes the UI
+Scale setting move text.
+
+### Fonts and other files referenced from theme.css
+
+A theme can bundle a font and point at it with a **relative** path:
+
+```css
+@font-face {
+  font-family: 'Manrope';
+  font-weight: 200 800;
+  src: url('assets/fonts/Manrope-latin.woff2') format('woff2');
+}
+```
+
+Relative is the only form that works, and the only form that validates. An absolute path or one
+containing `..` is refused outright - a shared theme must not be able to name a file elsewhere on
+the machine (RISKS.md R5) - while a path that simply does not exist is a warning, since the rule
+still applies and the browser falls back to the next family in the stack.
+
+The shell rewrites those URLs as it injects the stylesheet (`src/theme/assets.ts`). It has to:
+`theme.css` is injected as a `<style>` element, so the browser would otherwise resolve
+`assets/fonts/...` against the page rather than the theme folder, and the font would quietly never
+load. `data:`, `https:`, `asset:` and `#fragment` URLs are left exactly as written - though a
+remote one is blocked by the app's CSP, and the shell is expected to work offline, so bundle the
+file.
 
 ## layout.json
 
@@ -236,6 +299,7 @@ These class names are the stable contract:
 | `.aura-taskbar`, `.aura-taskbar-button`, `.aura-taskbar-clock` | The taskbar; `data-position` and `data-align` on the bar, `data-running` and `data-active` on buttons |
 | `.aura-settings-app`, `.aura-settings-category`, `.aura-setting` | The Settings app |
 | `.aura-editor`, `.aura-choice` | The folder editor and its option buttons; `data-active` marks the current choice |
+| `.aura-titlebar`, `.aura-titlebar-control` | The shell's own title bar, drawn only when windowed; `data-danger` marks close |
 | `.aura-overlay`, `.aura-panel` | Modal overlays |
 | `.aura-toast` | A toast; `data-level` is info/warning/error |
 

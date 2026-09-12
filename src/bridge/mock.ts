@@ -248,6 +248,7 @@ const defaultSettings: Settings = {
   monitorIndex: null,
   gamepadEnabled: true,
   reduceMotion: false,
+  blurMode: 'auto',
   scanOnStartup: true,
   language: 'en',
   taskbarVisible: true,
@@ -274,6 +275,17 @@ function saveSettings(settings: Settings): void {
 }
 
 let settings = loadSettings();
+
+/** A browser tab cannot really be maximised; this flag is what the mock's title bar reads. */
+let mockMaximized = false;
+
+function mockWindowState() {
+  return {
+    fullscreen: typeof document !== 'undefined' && Boolean(document.fullscreenElement),
+    maximized: mockMaximized,
+    minimized: false,
+  };
+}
 
 // ---- theme ------------------------------------------------------------------------------------
 
@@ -802,12 +814,30 @@ export const mockApi: AuraApi = {
     { name: 'Mock Display', x: 0, y: 0, width: 1920, height: 1080, scaleFactor: 1, primary: true },
   ],
 
-  setFullscreen: async () => {},
+  // A tab can go fullscreen for real, so the mock does: F11 and the Settings row can be tried
+  // in `npm run dev`. The preference is written exactly as the host writes it.
+  setFullscreen: async (fullscreen) => {
+    try {
+      if (fullscreen && !document.fullscreenElement) await document.documentElement.requestFullscreen();
+      if (!fullscreen && document.fullscreenElement) await document.exitFullscreen();
+    } catch {
+      // Refused without a user gesture, or no DOM at all; the preference is still recorded.
+    }
+    if (settings.startFullscreen !== fullscreen) {
+      settings = { ...settings, startFullscreen: fullscreen };
+      saveSettings(settings);
+    }
+  },
   shellReady: async () => {},
   exitShell: async () => {
     emitLocal('shell://toast', { level: 'info', message: 'Exit is only available in the app' });
   },
   minimizeShell: async () => {},
+  getWindowState: async () => mockWindowState(),
+  toggleMaximizeShell: async () => {
+    mockMaximized = !mockMaximized;
+    return mockWindowState();
+  },
 
   /**
    * A browser cannot read a real path, so this returns the file's name. Enough to exercise the

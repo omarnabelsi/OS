@@ -19,5 +19,8 @@
     "paths": { "@/*": ["src/*"] },
     "types": ["vite/client", "vitest/globals"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  // `*.node.test.ts` reads files and belongs to tsconfig.node.json, which has the node types.
+  // Keeping them out here is what stops a component importing `node:fs` and typechecking anyway.
+  "exclude": ["src/**/*.node.test.ts"]
 }

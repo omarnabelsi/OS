@@ -1,6 +1,6 @@
 /**
- * The visible frame: background, nav bar, the active screen, the window layer, the taskbar and
- * the overlay layer.
+ * The visible frame: background, the title bar (windowed only), nav bar, the active screen, the
+ * window layer, the taskbar and the overlay layer.
  *
  * This is also where the stores are wired to the core's event stream and where the first load
  * happens, so every screen below can assume the data is either present or explicitly loading.
@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 import { api } from '@/bridge';
 import { Screen } from '@/screens';
 import { useDesktopStore, useLibraryStore, useSettingsStore, useUiStore } from '@/store';
+import { useSurfaceEngine } from '@/surface';
 import { useWmStore, WindowLayer, type WindowBodyRenderer, type WindowInstance } from '@/wm';
 
 import { Background } from './Background';
@@ -21,6 +22,7 @@ import { NavBar } from './NavBar';
 import { Overlays } from './Overlays';
 import { SettingsApp } from './settings/SettingsApp';
 import { Taskbar } from './taskbar/Taskbar';
+import { ShellTitleBar } from './titlebar/ShellTitleBar';
 
 /**
  * What renders inside each kind of window.
@@ -47,6 +49,9 @@ export function Shell(): React.JSX.Element {
   const taskbarPosition = useSettingsStore((s) => s.settings?.taskbarPosition ?? 'bottom');
   const libraryError = useLibraryStore((s) => s.error);
   const pushToast = useUiStore((s) => s.pushToast);
+
+  // Decides how much backdrop blur this machine, theme and user get, for the whole app.
+  useSurfaceEngine();
 
   // Subscribe before the first load so an event arriving mid-flight is not missed.
   useEffect(() => {
@@ -115,52 +120,55 @@ export function Shell(): React.JSX.Element {
     : { duration: 0.26, ease: [0.05, 0.7, 0.1, 1] as const };
 
   return (
-    /*
-     * `data-taskbar` is what turns the frame from a column into a row: the taskbar is the last
-     * child, and the CSS flips the flex direction so it lands on whichever edge is chosen
-     * without the DOM order changing. Reading order and tab order then match the visual order
-     * in all four configurations.
-     */
-    <div className="aura-root" data-screen={screen} data-taskbar={taskbarPosition}>
+    <div className="aura-root" data-screen={screen}>
       <Background />
 
-      <div className="aura-frame">
-        <NavBar />
+      {/*
+        A real flex child of `.aura-root`, above everything else and full width whichever edge
+        the taskbar is on. Drawn only when the shell is windowed; fullscreen has no chrome.
+      */}
+      <ShellTitleBar />
 
-        <main className="aura-main" data-surface={screen === 'home' || undefined}>
-          {/*
-           * No hero any more. It belonged to the launcher framing - one big "currently selected
-           * game" panel above a stack of rows. Home is a desktop now, so the surface fills the
-           * space and each item speaks for itself.
-           */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={screen}
-              className="aura-screen-slot"
-              initial={reduceMotion ? false : { opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -10 }}
-              transition={transition}
-            >
-              <Screen />
-            </motion.div>
-          </AnimatePresence>
+      {/*
+        `data-taskbar` turns the body from a column into a row: the taskbar is its last child,
+        and the CSS flips the flex direction so it lands on whichever edge is chosen without the
+        DOM order changing. Reading order and tab order then match the visual order in all four
+        configurations.
+      */}
+      <div className="aura-shell-body" data-taskbar={taskbarPosition}>
+        <div className="aura-frame">
+          <NavBar />
 
-          {/*
-           * Windows live inside `.aura-main` so the layer measures exactly the area they may
-           * occupy - below the nav bar, beside the taskbar, above the overlay layer.
-           * Constraining and snapping both divide up that measured rectangle, not the screen,
-           * so moving the taskbar to another edge moves what a window can cover with it.
-           *
-           * Mounted only on the desktop. The other screens are scrolling lists, and a window
-           * inside a scroller scrolls away with the content; the window *state* lives in the
-           * store and is all still there when Home comes back.
-           */}
-          {screen === 'home' ? <WindowLayer renderers={WINDOW_BODIES} /> : null}
-        </main>
+          <main className="aura-main" data-surface={screen === 'home' || undefined}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={screen}
+                className="aura-screen-slot"
+                initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -10 }}
+                transition={transition}
+              >
+                <Screen />
+              </motion.div>
+            </AnimatePresence>
+
+            {/*
+             * Windows live inside `.aura-main` so the layer measures exactly the area they may
+             * occupy - below the nav bar, beside the taskbar, above the overlay layer.
+             * Constraining and snapping both divide up that measured rectangle, not the screen.
+             *
+             * Mounted only on the desktop. The other screens are scrolling lists, and a window
+             * inside a scroller scrolls away with the content; the window *state* lives in the
+             * store and is all still there when Home comes back.
+             */}
+            {screen === 'home' ? <WindowLayer renderers={WINDOW_BODIES} /> : null}
+          </main>
+        </div>
+
+        <Taskbar />
       </div>
 
-      <Taskbar />
       <Overlays />
     </div>
   );

@@ -37,6 +37,14 @@ document or a community theme's `layout.background` - can ask the shell to play 
 `muted` key inside a `wallpaper` value is ignored rather than rejected, so old installs keep
 working. The only audio the app produces is the five short interface sounds a theme supplies
 (`move`, `select`, `back`, `launch`, `error`).
+
+**`blurMode`** is `auto` (the default), `full` or `off`. It is the user's say over the most
+expensive thing the shell draws (docs/RISKS.md R12): `auto` measures the frame rate and asks for
+less when it has to - desktop items lose their blur below ~50 fps, and below ~40 the whole app
+swaps live `backdrop-filter` for one shared static snapshot of the field. `full` never steps
+down; `off` never blurs. A theme with `blur.surface: 0` overrides all three, because a flat theme
+with a blurred taskbar just looks broken. None of this is persisted per machine: it is one
+setting, and the probe re-derives the rest at every start.
 | `list_entries` | `filter?: EntryFilter` | `LibraryItem[]` | Hidden excluded unless `includeHidden` |
 | `get_entry` | `id` | `LibraryItem \| null` | |
 | `add_manual_entry` | `input: AddManualEntryInput` | `LibraryItem` | Emits `library://updated` (`manual_add`), then `library://artwork` once the executable's icon is extracted. `input.type` decides Games vs Apps and defaults to `app` |
@@ -71,10 +79,12 @@ working. The only audio the app produces is the five short interface sounds a th
 | `get_theme` | `id?` | `ThemeBundle` | `id` omitted = active theme |
 | `set_active_theme` | `id` | `ThemeBundle` | Persists `themeId`, emits `theme://changed` |
 | `get_monitors` | - | `MonitorInfo[]` | |
-| `set_fullscreen` | `fullscreen: bool` | - | |
-| `shell_ready` | - | - | UI calls after first paint; host shows the hidden window |
-| `exit_shell` | - | - | Stops input thread, exits process |
-| `minimize_shell` | - | - | |
+| `set_fullscreen` | `fullscreen: bool` | - | Applies it and persists it as `startFullscreen` (never in a `--smoke` run). Leaving fullscreen restores the windowed geometry from before it was entered |
+| `shell_ready` | - | - | UI calls after first paint; host shows the hidden window and re-asserts fullscreen |
+| `exit_shell` | - | - | Stops input thread, exits process. The UI calls it only from the confirmed exit overlay |
+| `minimize_shell` | - | - | The shell title bar's minimise (the bar exists only when windowed) |
+| `get_window_state` | - | `ShellWindowState` | `{ fullscreen, maximized, minimized }`. The shell's title bar is drawn only when not fullscreen |
+| `toggle_maximize_shell` | - | `ShellWindowState` | Maximise or restore the *windowed* shell. Never fullscreen, and a no-op while fullscreen |
 
 `pickFile(kind)` on the JS `AuraApi` is not a command; it wraps `@tauri-apps/plugin-dialog`.
 

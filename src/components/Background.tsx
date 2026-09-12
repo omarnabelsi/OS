@@ -2,8 +2,12 @@
  * The wallpaper layer, plus the colour bleed from the focused item.
  *
  * The source is the user's `wallpaper` setting, falling back to whatever the theme declares in
- * `layout.json` (`background`, then `fallbackBackground`). Whatever renders, a flat themed colour
- * sits underneath it, so there is never a white flash or a hole if an image or shader fails.
+ * `layout.json` (`background`, then `fallbackBackground`), and finally to the shell's own aurora
+ * field. The field is always painted underneath whatever else renders, so a shader that fails to
+ * compile or an image that fails to load leaves the designed background rather than a hole.
+ *
+ * `aura-default` declares no wallpaper at all any more: the field *is* its background. The
+ * shaders are still shipped and still render when something asks for one by name.
  *
  * A video wallpaper is always silent. This is the only element in the app that could carry an
  * audio track, and Aura Shell plays no music - so the mute is hard-coded here rather than
@@ -17,7 +21,17 @@ import { assetUrl } from '@/lib/assetUrl';
 import { useLibraryStore, useSettingsStore, useUiStore } from '@/store';
 import { useTheme } from '@/theme';
 
+import { AuroraField } from './AuroraField';
 import { ShaderCanvas } from './ShaderCanvas';
+
+/**
+ * What the background actually draws.
+ *
+ * `field` is the shell's own aurora field and is not a `WallpaperSetting`: nothing stores it and
+ * nobody picks it. It is simply what is there when neither the user nor the theme has asked for
+ * anything else - which makes it the default, and the fallback when a shader or image is gone.
+ */
+export type BackgroundSource = WallpaperSetting | { kind: 'field' };
 
 /** A theme's `layout.background` is the same shape as a wallpaper setting. */
 function themeWallpaper(layout: ThemeLayout | undefined): WallpaperSetting | null {
@@ -31,9 +45,9 @@ function themeWallpaper(layout: ThemeLayout | undefined): WallpaperSetting | nul
 export function resolveWallpaper(
   setting: WallpaperSetting | undefined,
   layout: ThemeLayout | undefined,
-): WallpaperSetting {
+): BackgroundSource {
   if (!setting || setting.kind === 'theme') {
-    return themeWallpaper(layout) ?? { kind: 'color', hex: 'var(--color-background)' };
+    return themeWallpaper(layout) ?? { kind: 'field' };
   }
   return setting;
 }
@@ -94,7 +108,12 @@ export function Background(): React.JSX.Element {
 
   return (
     <div className="aura-background" aria-hidden="true">
-      <div className="aura-background-ground" />
+      {/*
+        The field is the ground, always painted. A wallpaper the user or theme chose renders over
+        it, so a shader that fails to compile or an image that fails to load leaves the designed
+        background rather than a flat colour - or a hole.
+      */}
+      <AuroraField />
 
       {wallpaper.kind === 'shader' && bundle?.shaders[wallpaper.id] ? (
         <ShaderCanvas
@@ -134,7 +153,12 @@ export function Background(): React.JSX.Element {
         <img className="aura-background-bleed" src={assetUrl(bleedArt)} alt="" key={bleedArt} />
       ) : null}
 
-      <div className="aura-background-scrim" />
+      {/*
+        Only over a wallpaper. The field draws its own vignette, under the wallpaper layers where
+        it cannot darken an image - so with both, the top and bottom of the screen were dimmed
+        twice and the aurora was crushed to near-black.
+      */}
+      {wallpaper.kind !== 'field' ? <div className="aura-background-scrim" /> : null}
     </div>
   );
 }

@@ -186,7 +186,7 @@ export function SettingsApp({
         ) : (
           shown.map((category) => (
             <section key={category.id} className="aura-setting-group">
-              <h3>{category.title}</h3>
+              <h3 className="aura-type-section">{category.title}</h3>
               {category.rows.map((row) => (
                 <SettingRow key={row.id} group={group} row={row} />
               ))}

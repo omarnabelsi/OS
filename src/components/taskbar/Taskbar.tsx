@@ -17,6 +17,7 @@ import { api, type LaunchSession, type SystemStatus } from '@/bridge';
 import { useFocusable } from '@/focus';
 import { assetUrl } from '@/lib/assetUrl';
 import { useDesktopStore, useLibraryStore, useSettingsStore, useUiStore } from '@/store';
+import { Surface } from '@/surface';
 import { useWmStore, visibleWindows, type WindowInstance } from '@/wm';
 
 import { Icon } from '../Icon';
@@ -84,7 +85,7 @@ export function Taskbar(): React.JSX.Element | null {
   if (settings && !settings.taskbarVisible) return null;
 
   return (
-    <div className="aura-taskbar" data-position={position} data-align={alignment}>
+    <Surface level="e2" className="aura-taskbar" data-position={position} data-align={alignment}>
       <div className="aura-taskbar-strip">
         <TaskbarButton
           id="launcher"
@@ -154,12 +155,12 @@ export function Taskbar(): React.JSX.Element | null {
         ) : null}
 
         <time className="aura-taskbar-clock" dateTime={now.toISOString()}>
-          <span>{formatTime(now)}</span>
+          <span className="aura-type-clock">{formatTime(now)}</span>
           {/* The date is dropped on a vertical bar, where there is no room for it. */}
-          {vertical ? null : <small>{formatDate(now)}</small>}
+          {vertical ? null : <small className="aura-type-clock-date">{formatDate(now)}</small>}
         </time>
       </div>
-    </div>
+    </Surface>
   );
 }
 

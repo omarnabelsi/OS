@@ -40,15 +40,39 @@ describe('flattenTokens', () => {
     expect(vars['--tile-width-small']).toBe('160');
   });
 
+  it('flattens a nested group into a dashed name', () => {
+    // `font.weight.label` -> `--font-weight-label`. The type roles need this: the whole scale is
+    // one family at five weights, so the weights have to live in a group of their own.
+    const vars = flattenTokens({
+      font: { weight: { display: 250, section: 700 } },
+      elevation: { e1: { shadow: '0 1px 2px #000', blur: '12px' } },
+    } as unknown as ThemeTokens);
+    expect(vars['--font-weight-display']).toBe('250');
+    expect(vars['--font-weight-section']).toBe('700');
+    expect(vars['--elevation-e1-shadow']).toBe('0 1px 2px #000');
+    expect(vars['--elevation-e1-blur']).toBe('12px');
+  });
+
   it('survives junk without throwing', () => {
     expect(flattenTokens(null)).toEqual({});
     expect(flattenTokens(undefined)).toEqual({});
     expect(flattenTokens({} as ThemeTokens)).toEqual({});
-    // Nested objects and nulls are skipped rather than stringified to "[object Object]".
+    // Nulls and arrays are skipped rather than stringified to "null" or "[object Object]", and a
+    // top-level scalar produces nothing: a custom property needs a group to be named after.
     const vars = flattenTokens({
-      color: { accent: '#fff', nested: { deep: 'x' }, missing: null },
+      color: { accent: '#fff', missing: null, list: ['a', 'b'] },
+      stray: 'ignored',
     } as unknown as ThemeTokens);
     expect(vars).toEqual({ '--color-accent': '#fff' });
+  });
+
+  it('stops nesting before the names become unreadable', () => {
+    // Four levels deep is past anything the format describes; going deeper would silently mint
+    // properties no stylesheet is written against.
+    const vars = flattenTokens({
+      a: { b: { c: { d: { e: 'too deep' } } } },
+    } as unknown as ThemeTokens);
+    expect(Object.keys(vars)).toEqual([]);
   });
 
   it('flattens the real aura-default token file', () => {
@@ -73,7 +97,11 @@ describe('flattenTokens', () => {
       '--tile-width',
       '--tile-aspect',
       '--tile-focus-scale',
-      '--font-ui',
+      // The family stack, and one weight and one elevation step to pin the nesting: everything
+      // in src/styles/type.css reads these, so a rename here unstyles the whole type hierarchy.
+      '--font-family',
+      '--font-weight-label',
+      '--elevation-e1-shadow',
     ]) {
       expect(vars[name], `${name} must be produced by the theme`).toBeTruthy();
     }

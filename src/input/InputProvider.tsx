@@ -15,6 +15,7 @@ import type { GamepadButton } from '@/bridge';
 import { useFocus } from '@/focus';
 import { useSound } from '@/sound';
 import { useUiStore } from '@/store';
+import { toggleShellFullscreen } from '@/store/shellWindow';
 import { useWmStore, visibleWindows } from '@/wm';
 
 import {
@@ -115,6 +116,11 @@ export function InputProvider({ children }: { children: ReactNode }): React.JSX.
           else wm.focus(open[open.length - 1]!.id);
           return;
         }
+        case 'toggleFullscreen':
+          // Through the host, which applies it and remembers it - never a direct window call.
+          play('select');
+          void toggleShellFullscreen();
+          return;
         case 'favourite':
         case 'search':
           // Handled by the focused screen through its own key handling in V1.

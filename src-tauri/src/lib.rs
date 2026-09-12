@@ -133,6 +133,8 @@ pub fn run() {
             ipc::commands::shell_ready,
             ipc::commands::exit_shell,
             ipc::commands::minimize_shell,
+            ipc::commands::get_window_state,
+            ipc::commands::toggle_maximize_shell,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aura Shell");

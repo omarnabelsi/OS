@@ -13,6 +13,7 @@ import type { EntryType } from '@/bridge';
 import { useFocus, useFocusable } from '@/focus';
 import { useSound } from '@/sound';
 import { useLibraryStore, useUiStore, type OverlayId } from '@/store';
+import { Surface } from '@/surface';
 
 import { Icon, type IconName } from './Icon';
 
@@ -65,7 +66,7 @@ function Overlay({ id, title, children }: OverlayProps): React.JSX.Element {
 
   return (
     <motion.div
-      className="aura-overlay"
+      className="aura-overlay aura-surface-scrim"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -77,7 +78,9 @@ function Overlay({ id, title, children }: OverlayProps): React.JSX.Element {
         if (event.target === event.currentTarget) setOverlay(null);
       }}
     >
-      <motion.div
+      <Surface
+        level="e4"
+        as={motion.div}
         className="aura-panel"
         initial={{ opacity: 0, y: 18, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -86,7 +89,7 @@ function Overlay({ id, title, children }: OverlayProps): React.JSX.Element {
       >
         <h2 className="aura-panel-title">{title}</h2>
         {children}
-      </motion.div>
+      </Surface>
     </motion.div>
   );
 }
@@ -389,7 +392,9 @@ function LaunchCurtain(): React.JSX.Element | null {
   if (!session) return null;
 
   return (
-    <motion.div
+    <Surface
+      level="e4"
+      as={motion.div}
       className="aura-overlay aura-launch"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -406,7 +411,7 @@ function LaunchCurtain(): React.JSX.Element | null {
         <h2>Starting {item?.name ?? 'your game'}</h2>
         <p>Aura Shell will step aside and come back when you are done.</p>
       </motion.div>
-    </motion.div>
+    </Surface>
   );
 }
 

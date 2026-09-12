@@ -90,6 +90,15 @@ pub fn load_from_dir(dir: &Path, builtin: bool) -> Result<ThemeBundle> {
         String::new()
     };
 
+    // theme.css can reference the theme's own files - a bundled font, a background image - and
+    // the UI turns those paths into asset URLs, so they are a path-traversal surface exactly as
+    // `layout.json` is. Escaping the folder refuses the theme; a missing file is only a note.
+    for rel in validate::css_urls(&css) {
+        if let Some(note) = validate::css_asset(dir, &rel)? {
+            tracing::warn!("theme `{}`: {note}", manifest.id);
+        }
+    }
+
     // Only the five known interface slots are resolved. A theme declaring anything else gets it
     // dropped here rather than handed to the UI: the app plays no music, and an unknown slot is
     // either a typo or an attempt to smuggle a soundtrack into the bundle. See THEME_FORMAT.md.

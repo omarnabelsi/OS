@@ -113,7 +113,7 @@ export function Tile({ item, rowId, group = 'content', onActivate }: TileProps):
         </div>
       </button>
 
-      <span className="aura-tile-label">{item.name}</span>
+      <span className="aura-tile-label aura-type-tile-label">{item.name}</span>
     </motion.div>
   );
 }
@@ -135,7 +135,7 @@ export function TileRow({ id, title, items, emptyMessage }: TileRowProps): React
 
   return (
     <section className="aura-row" aria-label={title}>
-      <h2 className="aura-row-title">
+      <h2 className="aura-row-title aura-type-section">
         {title}
         {items.length > 0 ? <span className="aura-row-count">{items.length}</span> : null}
       </h2>

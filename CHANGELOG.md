@@ -320,6 +320,42 @@ by D-pad, because the action that moves focus between scopes arrives with the wi
 - The folder editor's preview glyph had no box to size itself to, and the taskbar was missing
   from the focus engine's chrome groups.
 
+### Fixed (fix brief #3: window controls and fullscreen by default)
+
+- **The minimise / maximise / close buttons did nothing.** They are the in-app windows'
+  controls; there was no shell-level title bar. The title bar's drag handler captured the pointer
+  on *every* press, including presses that began on its buttons, and pointer capture retargets
+  the pointerup to the capturing element - so the browser delivered the click to the title bar,
+  never to the button. Nothing was covering them: `elementFromPoint` returned the button itself.
+  A press on a control no longer starts a drag, and a double press on one is no longer read as a
+  title-bar double-click. Earlier checks clicked with `element.click()`, which skips pointer
+  events entirely; this was verified with real mouse input.
+- **A title bar for the windowed shell** (the brief's Option B). Fullscreen - the default - has no
+  chrome at all, but a borderless *window* could not be moved, minimised or closed with a mouse.
+  `ShellTitleBar` is drawn only when the shell is not fullscreen. The bar and its label are a Tauri
+  drag region and the buttons deliberately are not; double-click maximises; minimise goes to the
+  taskbar; maximise is the windowed maximise and never fullscreen; close opens the exit
+  confirmation rather than calling `exit_shell`. Every button is a focusable in a `titlebar`
+  group, reachable with Up from the nav bar, so it works from a keyboard or a pad.
+- **Window operations go through the bridge.** New commands `get_window_state` and
+  `toggle_maximize_shell`, owned by `shell_host::window`, with all four mirrors updated and the
+  mock doing real browser fullscreen. The capability file gains only `start-dragging` and
+  `internal-toggle-maximize`, which the drag region itself calls; everything else is Rust.
+- **Fullscreen is one preference, applied at once and remembered.** F11 and the Settings row -
+  now "Fullscreen" rather than "Start fullscreen" - both apply immediately. `set_fullscreen`
+  persists `startFullscreen` (never in a `--smoke` run), and a settings change is applied live.
+  Leaving fullscreen restores the windowed geometry from before it was entered: the window is
+  created fullscreen, so what the OS would otherwise restore is the config's 1920x1080 fallback,
+  larger than a 1366x768 display.
+- **`npm run smoke` exists.** `args.rs` and the brief referred to it; it did not. It builds the
+  host and runs `--smoke` against a throwaway data directory, as CI's smoke job does.
+- Already in place since fix brief #1, and verified here rather than changed: the window is
+  created fullscreen, fullscreen is re-asserted after the window is shown, windowed size is a
+  fraction of the actual monitor, and a launch leaves fullscreen before minimising and restores
+  the remembered state afterwards.
+- `.aura-root` is now always a column with the title bar across the top; the taskbar-edge
+  arrangement moved to `.aura-shell-body`.
+
 ### Fixed (text layout and the exit hotkey)
 
 - **The game name no longer sits under the artwork.** The focus scale moved from the button to

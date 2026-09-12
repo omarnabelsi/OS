@@ -62,6 +62,8 @@ export const tauriApi: AuraApi = {
   shellReady: () => invoke('shell_ready'),
   exitShell: () => invoke('exit_shell'),
   minimizeShell: () => invoke('minimize_shell'),
+  getWindowState: () => invoke('get_window_state'),
+  toggleMaximizeShell: () => invoke('toggle_maximize_shell'),
 
   pickFile: async (kind) => {
     const picked = await open({ multiple: false, directory: false, filters: FILTERS[kind] });

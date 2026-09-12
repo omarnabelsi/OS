@@ -116,11 +116,32 @@ pub struct Settings {
     pub monitor_index: Option<u32>,
     pub gamepad_enabled: bool,
     pub reduce_motion: bool,
+    pub blur_mode: BlurMode,
     pub scan_on_startup: bool,
     pub language: String,
     pub taskbar_visible: bool,
     pub taskbar_position: TaskbarPosition,
     pub taskbar_alignment: TaskbarAlignment,
+}
+
+/// How much backdrop blur the shell may use.
+///
+/// Blur is the most expensive thing the shell draws (docs/RISKS.md R12), and how much a machine
+/// can afford is not knowable up front - the same integrated GPU is comfortable at 1080p and
+/// struggles at 4K. So the default measures the frame rate and asks for less when it has to, and
+/// this setting is the user's override in either direction.
+///
+/// A theme that sets `blur.surface: 0` is not a glass theme, and that wins over all three.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BlurMode {
+    /// Full blur, stepping down if the frame rate cannot hold it.
+    #[default]
+    Auto,
+    /// Never step down, however slow it gets.
+    Full,
+    /// No backdrop blur anywhere.
+    Off,
 }
 
 /// Which edge the taskbar is docked to. This is Aura's own taskbar inside the shell window -
@@ -162,6 +183,7 @@ impl Default for Settings {
             monitor_index: None,
             gamepad_enabled: true,
             reduce_motion: false,
+            blur_mode: BlurMode::Auto,
             scan_on_startup: true,
             language: "en".to_string(),
             taskbar_visible: true,

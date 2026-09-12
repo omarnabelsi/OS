@@ -15,6 +15,7 @@ import { useRef, type ReactNode } from 'react';
 
 import { useFocusable } from '@/focus';
 import { useSettingsStore } from '@/store';
+import { Surface } from '@/surface';
 
 import { Icon } from '../components/Icon';
 import { constrainToDesktop, resizeRect, snapRegionFor, type ResizeEdge, type Rect } from './geometry';
@@ -50,7 +51,20 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
 
   const rect = win.mode === 'maximised' ? bounds : win.rect;
 
+  /*
+   * A press on one of the controls is a click, never the start of a drag.
+   *
+   * Missing this killed all three buttons. The title bar captured the pointer on *every* press,
+   * including presses that began on a button, and pointer capture retargets the pointerup to the
+   * capturing element - so the click the browser synthesises landed on the title bar, never on
+   * the button under the cursor. The buttons looked fine and did nothing. Checks that call
+   * `element.click()` skip pointer events entirely, which is how it got past them.
+   */
+  const isControl = (target: EventTarget | null) =>
+    target instanceof Element && target.closest('.aura-window-controls') !== null;
+
   const startTitleDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isControl(event.target)) return;
     if (event.button !== 0) return;
     focus(win.id);
     // Dragging a maximised window restores it first, the way Windows does.
@@ -186,17 +200,22 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
         element, a rounded corner cut the corner handles away - `elementFromPoint` at the very
         corner returned the desktop behind, so diagonal resize was close to unusable.
       */}
-      <div className="aura-window-frame">
+      {/* e3, and only while focused: the design gives glass to the top window alone, which is
+          also what keeps a stack of ten windows down to one blurred surface. */}
+      <Surface level="e3" blur={focused} className="aura-window-frame">
         <div
           className="aura-window-title"
           onPointerDown={startTitleDrag}
           onPointerMove={moveTitleDrag}
           onPointerUp={endTitleDrag}
           onPointerCancel={endTitleDrag}
-          onDoubleClick={() => toggleMaximise(win.id)}
+          // A quick double press on a control is two clicks, not also a title-bar double-click.
+          onDoubleClick={(event) => {
+            if (!isControl(event.target)) toggleMaximise(win.id);
+          }}
         >
           {win.icon ? <Icon name={win.icon} size="1em" /> : null}
-          <span className="aura-window-name">{win.title}</span>
+          <span className="aura-window-name aura-type-window-title">{win.title}</span>
 
           <div className="aura-window-controls">
             <button
@@ -233,7 +252,7 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
         </div>
 
         <div className="aura-window-body">{children}</div>
-      </div>
+      </Surface>
 
       {win.resizable && win.mode !== 'maximised'
         ? RESIZE_EDGES.map((edge) => (

@@ -106,4 +106,35 @@ describe('WindowLayer', () => {
 
     expect(wm().focusedId).toBe(first);
   });
+
+  it('never captures the pointer for a press that starts on a title-bar control', () => {
+    // The regression behind "the buttons do nothing": the title bar captured the pointer on
+    // every press, so the browser delivered the click to the title bar instead of the button.
+    // jsdom does not retarget clicks under capture, so this asserts the cause directly.
+    const capture = vi.spyOn(Element.prototype, 'setPointerCapture');
+    wm().open({ kind: 'folder', targetId: 'f1', title: 'Games' });
+    render(<WindowLayer renderers={renderers} />);
+
+    for (const label of ['Minimise', 'Maximise', 'Close']) {
+      fireEvent.pointerDown(screen.getByLabelText(label), { button: 0, pointerId: 1 });
+    }
+    expect(capture).not.toHaveBeenCalled();
+
+    // A press on the title itself is still the start of a drag.
+    fireEvent.pointerDown(screen.getByText('Games', { selector: '.aura-window-name' }), {
+      button: 0,
+      pointerId: 2,
+    });
+    expect(capture).toHaveBeenCalledTimes(1);
+    capture.mockRestore();
+  });
+
+  it('does not read a double press on a control as a title-bar double-click', () => {
+    const id = wm().open({ kind: 'folder', targetId: 'f1', title: 'Games' });
+    render(<WindowLayer renderers={renderers} />);
+
+    fireEvent.doubleClick(screen.getByLabelText('Maximise'));
+
+    expect(wm().windows.find((w) => w.id === id)!.mode).toBe('normal');
+  });
 });

@@ -1,0 +1,123 @@
+/**
+ * The elevation ladder.
+ *
+ * Five levels, one rule set. A surface declares its level and gets a shadow, a tint and - if the
+ * blur budget granted it one - a backdrop blur. Nothing else in the app should be writing a drop
+ * shadow or a `backdrop-filter`; if something needs to sit above something else, it is a level.
+ *
+ * The ladder is deliberately shadow-heavy and blur-light. Blur is the most expensive thing the
+ * shell draws (docs/RISKS.md R12), so depth is carried by shadow spread and surface alpha, and
+ * real `backdrop-filter` is reserved for at most three surfaces at a time - see
+ * `src/surface/budget.ts`, which decides which three and writes the answer into `data-blur`.
+ *
+ * The three `data-blur` states are three ways to paint the same surface:
+ *   live     - a real backdrop blur.
+ *   snapshot - one shared, static, blurred picture of the field, anchored to the viewport so it
+ *              lines up the way a backdrop does. The cheap path for integrated GPUs at 4K.
+ *   off      - flat. The design's own note: once something sits above them, a flat surface and a
+ *              blurred one at the same alpha read almost identically.
+ */
+
+.aura-surface {
+  /* Each level overrides these; the state rules below are shared by all of them. */
+  --surface-tint: transparent;
+  --surface-blur: 0px;
+  /*
+   * What sits *under* the tint when there is no blur to supply a backdrop. Transparent is right
+   * for a 6% tint - the field shows through and looks intentional - and wrong for a 72% one,
+   * where the desktop icons showing faintly through a window read as a rendering fault.
+   */
+  --surface-base: transparent;
+}
+
+/* ---- the five levels ------------------------------------------------------------------------ */
+
+/* e0: the desktop field itself. It is the thing everything else blurs, so it has no shadow, no
+   tint and never blurs anything. */
+.aura-surface-e0 {
+  background: var(--color-background);
+  box-shadow: none;
+}
+
+/* e1: a desktop item. Wants blur, and is the first to lose it. */
+.aura-surface-e1 {
+  --surface-tint: var(--elevation-e1-surface);
+  --surface-blur: var(--elevation-e1-blur);
+  box-shadow: var(--elevation-e1-shadow);
+}
+
+/* e2: the taskbar. Always up, so it holds its blur ahead of the window. */
+.aura-surface-e2 {
+  --surface-tint: var(--elevation-e2-surface);
+  --surface-blur: var(--elevation-e2-blur);
+  box-shadow: var(--elevation-e2-shadow);
+}
+
+/* e3: a window. Only the focused one asks for blur - see `<Surface blur={focused}>`. */
+.aura-surface-e3 {
+  /*
+   * `window.opacity` stays the theme's dial for how much glass a window has; the e3 token is the
+   * colour it tints with. At the default 100% the fill is exactly the token.
+   */
+  --surface-tint: color-mix(in srgb, var(--elevation-e3-surface) var(--window-opacity, 100%), transparent);
+  --surface-blur: var(--elevation-e3-blur);
+  --surface-base: var(--color-background);
+  box-shadow: var(--elevation-e3-shadow);
+}
+
+/* e4: an overlay. Outranks everything - it is modal, so it is the surface being read. */
+.aura-surface-e4 {
+  --surface-tint: var(--elevation-e4-surface);
+  --surface-blur: var(--elevation-e4-blur);
+  --surface-base: var(--color-background);
+  box-shadow: var(--elevation-e4-shadow);
+}
+
+/**
+ * The scrim behind an e4 panel. Its own element rather than part of the panel, because it covers
+ * the screen and the panel does not - and because dismiss-on-click needs something to click.
+ */
+.aura-surface-scrim {
+  background: var(--elevation-e4-scrim);
+}
+
+/* ---- the three ways to paint a surface ------------------------------------------------------ */
+
+.aura-surface[data-blur='live'] {
+  background-color: var(--surface-tint);
+  backdrop-filter: blur(var(--surface-blur));
+  -webkit-backdrop-filter: blur(var(--surface-blur));
+}
+
+/*
+ * `background-attachment: fixed` is what makes this read as a backdrop: it anchors the image to
+ * the viewport instead of to the element, so each surface shows the part of the field it is
+ * actually sitting over - without any component having to know where it is on screen.
+ */
+.aura-surface[data-blur='snapshot'] {
+  background-color: var(--surface-base);
+  background-image: linear-gradient(var(--surface-tint), var(--surface-tint)),
+    var(--surface-snapshot, none);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+.aura-surface[data-blur='off'] {
+  background-color: var(--surface-base);
+  background-image: linear-gradient(var(--surface-tint), var(--surface-tint));
+}
+
+/**
+ * `blur.surface: 0` means no blur anywhere.
+ *
+ * Every raised surface already goes flat through `data-blur`, because the engine puts the whole
+ * app in `off` mode. This is the backstop for anything that grows a `backdrop-filter` outside
+ * the ladder - it should never match, and `elevation.node.test.ts` fails if something does.
+ */
+:root[data-surface-blur='off'] .aura-surface,
+:root[data-surface-blur='off'] .aura-surface::before,
+:root[data-surface-blur='off'] .aura-surface::after {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}

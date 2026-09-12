@@ -24,7 +24,5 @@
       { "id": "favourites", "title": "Favourites", "filter": { "favouritesOnly": true } },
       { "id": "games", "title": "All games", "filter": { "type": "game" } }
     ]
-  },
-  "background": { "kind": "shader", "id": "aurora" },
-  "fallbackBackground": { "kind": "image", "path": "assets/wallpapers/aurora.svg" }
+  }
 }

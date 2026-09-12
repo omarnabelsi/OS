@@ -3,8 +3,9 @@
 //!
 //! Errors: id not kebab-case or != folder name, engine != `aura-theme/1`, version not semver,
 //! minAppVersion > current app version, referenced sound/shader/screenshot file missing,
-//! any referenced path escaping the theme folder (`..`).
-//! Warnings: missing sound slots, tokens missing `color.accent` / `color.background`.
+//! any referenced path escaping the theme folder (`..`), including from a `url()` in `theme.css`.
+//! Warnings: missing sound slots, tokens missing `color.accent` / `color.background`, a
+//! `theme.css` `url()` naming a file that is not there.
 
 use std::path::{Component, Path};
 
@@ -86,6 +87,73 @@ pub fn sanitise_folder_shapes(dir: &Path, layout: &mut serde_json::Value) -> Vec
     });
 
     notes
+}
+
+/// Relative `url(...)` targets in a stylesheet, in source order.
+///
+/// Skips what is already loadable or is not a file reference at all: a scheme of two or more
+/// characters (`data:`, `https:`, `asset:`), a protocol-relative or absolute path, and the `#id`
+/// form that points at an SVG filter in the same document. A single letter before the colon is
+/// *not* treated as a scheme, so `url(C:/...)` is caught as the absolute path it is.
+pub fn css_urls(css: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = css;
+    while let Some(at) = rest.find("url(") {
+        rest = &rest[at + "url(".len()..];
+        let Some(end) = rest.find(')') else { break };
+        let raw = rest[..end]
+            .trim()
+            .trim_matches(|c| c == '"' || c == '\'')
+            .trim()
+            .to_string();
+        rest = &rest[end + 1..];
+        if raw.is_empty() || is_already_resolved(&raw) {
+            continue;
+        }
+        out.push(raw);
+    }
+    out
+}
+
+fn is_already_resolved(target: &str) -> bool {
+    if target.starts_with('/') || target.starts_with('#') {
+        return true;
+    }
+    match target.find(':') {
+        // Two or more characters before the colon: a scheme. One is a Windows drive letter.
+        Some(i) if i >= 2 => target[..i]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')),
+        _ => false,
+    }
+}
+
+/// Check one `url(...)` target from `theme.css`.
+///
+/// Escaping the theme folder is fatal: it is the same path-traversal surface as folder shapes
+/// (docs/RISKS.md R5), and these paths are handed to the UI to turn into asset URLs. A *missing*
+/// file is not fatal - the rule still applies and the browser falls back to the next font or
+/// shows no image - so it comes back as a note instead of costing the user their theme.
+pub fn css_asset(dir: &Path, rel: &str) -> Result<Option<String>> {
+    let path = Path::new(rel);
+    if path.is_absolute() || is_already_resolved(rel) || rel.contains(':') {
+        return Err(theme_err(format!(
+            "theme.css `url({rel})` must be a path relative to the theme folder"
+        )));
+    }
+    for component in path.components() {
+        if matches!(component, Component::ParentDir) {
+            return Err(theme_err(format!(
+                "theme.css `url({rel})` escapes the theme folder"
+            )));
+        }
+    }
+    if !dir.join(path).is_file() {
+        return Ok(Some(format!(
+            "theme.css references `{rel}`, which is missing; anything using it falls back"
+        )));
+    }
+    Ok(None)
 }
 
 pub fn manifest(dir: &Path, m: &ThemeManifest, app_version: &str) -> Result<()> {
@@ -237,6 +305,65 @@ mod tests {
         let dir = tmp.join(id);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn css_urls_finds_relative_references_only() {
+        let css = r#"
+            @font-face { src: url('assets/fonts/Manrope-latin.woff2') format('woff2'); }
+            .a { background: url( "assets/bg.png" ); }
+            .b { background: url(plain.svg); }
+            .c { background: url(data:image/png;base64,AAA); }
+            .d { background: url(https://example.com/x.png); }
+            .e { background: url(asset://localhost/x.png); }
+            .f { background: url(//cdn/x.png); }
+            .g { background: url(/x.png); }
+            .h { filter: url(#grain); }
+        "#;
+        assert_eq!(
+            css_urls(css),
+            vec![
+                "assets/fonts/Manrope-latin.woff2",
+                "assets/bg.png",
+                "plain.svg"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_drive_letter_is_not_a_url_scheme() {
+        // Two characters or more before the colon is a scheme; one is a Windows drive, and a
+        // drive path must be caught rather than waved through as already loadable.
+        assert_eq!(css_urls("a{background:url('C:/games/x.png')}").len(), 1);
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(css_asset(tmp.path(), "C:/games/x.png").is_err());
+    }
+
+    #[test]
+    fn css_url_escaping_the_theme_folder_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = theme_dir(tmp.path(), "aura-test");
+
+        for bad in [
+            "../../../Windows/Fonts/arial.ttf",
+            "/etc/passwd",
+            "C:\\Windows\\Fonts\\arial.ttf",
+        ] {
+            assert!(css_asset(&dir, bad).is_err(), "{bad} should be refused");
+        }
+    }
+
+    #[test]
+    fn a_missing_css_file_is_a_note_not_an_error() {
+        // The rule still applies and the browser falls back to the next font, so losing the whole
+        // theme over it would be the worse outcome.
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = theme_dir(tmp.path(), "aura-test");
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+        std::fs::write(dir.join("assets").join("here.woff2"), b"wOF2").unwrap();
+
+        assert_eq!(css_asset(&dir, "assets/here.woff2").unwrap(), None);
+        assert!(css_asset(&dir, "assets/gone.woff2").unwrap().is_some());
     }
 
     #[test]
