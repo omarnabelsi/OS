@@ -22,7 +22,7 @@ import { useDesktopStore, useLibraryStore, useUiStore } from '@/store';
 import { useTheme } from '@/theme';
 import { useWmStore } from '@/wm';
 
-import type { IconName } from '../Icon';
+import { isIconName } from '../Icon';
 import { DesktopIcon } from './DesktopIcon';
 import { Folder } from './Folder';
 import {
@@ -234,7 +234,11 @@ export function DesktopSurface(): React.JSX.Element {
           targetId: item.targetId,
           title: item.labelOverride ?? folder?.label ?? 'Folder',
           subtitle,
-          icon: (folder?.icon as IconName | undefined) ?? 'files',
+          // `folder.icon` may be a custom image path rather than a theme icon key (11d) - the
+          // title bar only draws named glyphs, so anything else falls back the way "no icon" did.
+          icon: folder?.icon && isIconName(folder.icon) ? folder.icon : 'files',
+          // Ink unless the folder was explicitly tinted (11a) - never a hardcoded accent here.
+          iconColor: folder?.color ?? null,
           origin,
           size: { width: 1300, height: 790 },
           // A folder reopens where it was left. `constrainToDesktop` still applies, so a

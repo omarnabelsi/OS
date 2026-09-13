@@ -248,6 +248,15 @@ pub fn set_folder_cover(state: State<'_, AppState>, id: String, path: String) ->
     state.core.set_folder_cover(&id, &path)
 }
 
+/// Copy a user-chosen image into the artwork cache and set it as the folder's icon.
+///
+/// Same column (`folders.icon`) a theme icon key already lives in - the read side tells the two
+/// apart by whether the value names one of the active theme's icons.
+#[tauri::command]
+pub fn set_folder_icon(state: State<'_, AppState>, id: String, path: String) -> CmdResult<Folder> {
+    state.core.set_folder_icon(&id, &path)
+}
+
 #[tauri::command]
 pub fn delete_folder(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     state.core.delete_folder(&id)

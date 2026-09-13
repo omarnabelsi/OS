@@ -82,6 +82,8 @@ export interface AuraApi {
    * the user's own file breaks when they move it - and may sit outside the asset scope entirely.
    */
   setFolderCover(id: string, path: string): Promise<Folder>;
+  /** Copy an image into the artwork cache and set it as the folder's icon. Same column as a theme icon key. */
+  setFolderIcon(id: string, path: string): Promise<Folder>;
   deleteFolder(id: string): Promise<void>;
   /** Smart filter results, collection members, or empty for a filesystem folder (V2). */
   folderContents(id: string): Promise<LibraryItem[]>;

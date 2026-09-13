@@ -10,6 +10,34 @@ events or fields) must be listed under **Changed** or **Removed** with both mirr
 
 V1 "The Face" skeleton.
 
+### Fixed - closing four loose ends left by the last round (prompt 11)
+
+- **The title bar folder icon is ink unless the folder itself has a tint.** Prompt 7 asked for it
+  in accent cyan by name; the accent audit forbids accent in window chrome. Both were followed
+  correctly - the source design contradicted itself, because the mockup's folder was never tinted
+  cyan to begin with. Resolved in favour of the written rule, with the audit's own exception
+  applying: the icon shows a colour only when `folder.color` names one, whatever colour that is,
+  through a `--window-icon-tint` custom property rather than a hardcoded `--color-accent`.
+- **The taskbar indicator's `width` transition and the window-snap preview's `left/top/width/height`
+  transition are now a recorded exception to the transform/opacity/box-shadow motion budget**, not
+  an oversight: both are confirmed `position: absolute` with no sibling that measures their box,
+  so neither triggers the reflow cascade the budget exists to prevent, and forcing either onto
+  `transform: scale()` alone would distort a shape (a stadium's end-caps; a resize's border and
+  radius) worse than the reflow it would dodge. Marked at each site and logged in
+  [docs/RISKS.md](docs/RISKS.md) (R12).
+- **A default added after a desktop already existed now reaches it.** `seed_if_empty` only ever
+  ran once, on an empty install, so a widget added later never reached someone already using the
+  shell. `desktop_seeded_defaults` (schema v3) tracks which default items have been *offered* to
+  which desktop, by a stable key, independent of whether the item survived - so a backfill runs on
+  every start without resurrecting a default the user deliberately deleted. See
+  [docs/RISKS.md](docs/RISKS.md) (R15).
+- **A folder's icon can be a picked image, not only a theme icon key.** The two have always shared
+  one column; the read side only ever tried it as a theme icon key, so a custom path silently drew
+  nothing. `folder.icon` now resolves as a path when it is not one of the active theme's names, the
+  same way `folder.cover` already does, and the editor's icon row gained a "Custom image" control
+  wired through a new `set_folder_icon` command that copies into the artwork cache exactly the way
+  `set_folder_cover` does.
+
 ### Added - the design system
 
 - **Type foundation.** `aura-default` bundles Manrope (six `woff2` subsets, 73 KB, OFL). Ten type

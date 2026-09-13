@@ -234,6 +234,38 @@ pub fn prune_dangling(db: &Db) -> Result<usize> {
     Ok(n)
 }
 
+// ---- seeded defaults -------------------------------------------------------------------------
+//
+// Tracks which default items (a smart folder, a widget) have already been offered to which
+// desktop - see `desktop::seed_if_empty` and docs/RISKS.md R15. A row here means "offered",
+// never "present": whether the item itself survives is entirely the user's call, and this table
+// does not care.
+
+/// Whether `seed_key` has already been offered to `desktop_id`, regardless of whether the item
+/// it seeded is still on the desktop.
+pub fn is_seeded(db: &Db, desktop_id: &str, seed_key: &str) -> Result<bool> {
+    let conn = db.conn();
+    let n: i64 = conn.query_row(
+        "SELECT count(*) FROM desktop_seeded_defaults WHERE desktop_id = ?1 AND seed_key = ?2",
+        params![desktop_id, seed_key],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+/// Record that `seed_key` has been offered to `desktop_id`. Idempotent, so replaying a start that
+/// crashed partway through never fails on a duplicate row.
+pub fn mark_seeded(db: &Db, desktop_id: &str, seed_key: &str, seeded_at: i64) -> Result<()> {
+    let conn = db.conn();
+    conn.execute(
+        "INSERT INTO desktop_seeded_defaults (desktop_id, seed_key, seeded_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(desktop_id, seed_key) DO NOTHING",
+        params![desktop_id, seed_key, seeded_at],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,5 +464,39 @@ mod tests {
         assert_eq!(left.len(), 2);
         assert!(left.iter().any(|i| i.id == alive.id));
         assert!(left.iter().any(|i| i.kind == DesktopItemKind::Widget));
+    }
+
+    #[test]
+    fn a_seed_key_is_offered_at_most_once_per_desktop() {
+        let db = db();
+        upsert(&db, &desktop("d1")).unwrap();
+        upsert(
+            &db,
+            &Desktop {
+                id: "d2".into(),
+                ..desktop("d2")
+            },
+        )
+        .unwrap();
+
+        assert!(!is_seeded(&db, "d1", "widget.clock").unwrap());
+
+        mark_seeded(&db, "d1", "widget.clock", 100).unwrap();
+        assert!(is_seeded(&db, "d1", "widget.clock").unwrap());
+        // A different desktop, or a different key, is untouched.
+        assert!(!is_seeded(&db, "d2", "widget.clock").unwrap());
+        assert!(!is_seeded(&db, "d1", "widget.now-playing").unwrap());
+
+        // Replaying the mark (a crash-and-retry) must not fail on the primary key.
+        mark_seeded(&db, "d1", "widget.clock", 200).unwrap();
+        assert!(is_seeded(&db, "d1", "widget.clock").unwrap());
+
+        // Deleting the desktop takes its seeded-defaults rows with it, the same as its items.
+        delete(&db, "d1").unwrap();
+        upsert(&db, &desktop("d1")).unwrap();
+        assert!(
+            !is_seeded(&db, "d1", "widget.clock").unwrap(),
+            "a new desktop that reuses an old id starts with a clean slate"
+        );
     }
 }

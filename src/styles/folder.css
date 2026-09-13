@@ -200,6 +200,15 @@
   color: color-mix(in srgb, var(--folder-tint) 72%, var(--color-text));
 }
 
+/* A custom icon image sits in the same slot as the glyph, sized in its own box rather than by
+   `font-size` - an <img> has no glyph metrics to size against. */
+.aura-folder-icon-image {
+  width: var(--folder-icon-size, 34px);
+  height: var(--folder-icon-size, 34px);
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
 /* ---- label and meta ---------------------------------------------------------------------------- */
 
 /* Text does not shrink either - see the note on `.aura-folder-art`. */

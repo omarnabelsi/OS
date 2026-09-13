@@ -10,7 +10,7 @@ import type { Folder, ThemeFolderShape } from '@/bridge';
 import { assetUrl } from '@/lib/assetUrl';
 import { useTheme } from '@/theme';
 
-import { Icon, type IconName } from '../Icon';
+import { Icon, isIconName, type IconName } from '../Icon';
 
 /** The shapes the active theme declares, in the order it declares them. */
 export function useFolderShapes(): ThemeFolderShape[] {
@@ -57,6 +57,13 @@ export function FolderGlyph({ folder, fallbackIcon = 'files' }: FolderGlyphProps
   const cover = folder?.cover ? assetUrl(folder.cover) : undefined;
   const tint = folder?.color ?? undefined;
 
+  // `folder.icon` is either a theme icon key or a user-picked image path (11d) - the two share a
+  // column, so a value that is not one of the active theme's known names is resolved as a path
+  // instead, through the same `assetUrl` a cover already goes through.
+  const iconValue = folder?.icon ?? undefined;
+  const knownIcon = iconValue && isIconName(iconValue) ? iconValue : undefined;
+  const customIcon = iconValue && !knownIcon ? assetUrl(iconValue) : undefined;
+
   return (
     <span className="aura-glyph" style={tint ? { '--folder-tint': tint } as React.CSSProperties : undefined}>
       {/*
@@ -78,9 +85,11 @@ export function FolderGlyph({ folder, fallbackIcon = 'files' }: FolderGlyphProps
 
       {cover ? (
         <img className="aura-glyph-cover" src={cover} alt="" draggable={false} />
+      ) : customIcon ? (
+        <img className="aura-glyph-cover aura-glyph-icon-image" src={customIcon} alt="" draggable={false} />
       ) : (
         <span className="aura-glyph-icon">
-          <Icon name={(folder?.icon as IconName) || fallbackIcon} size="1em" />
+          <Icon name={knownIcon ?? fallbackIcon} size="1em" />
         </span>
       )}
     </span>

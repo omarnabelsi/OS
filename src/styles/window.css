@@ -80,6 +80,11 @@
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 60%, transparent);
   pointer-events: none;
+  /* motion-budget exception: recorded in docs, see Prompt 11b - out-of-flow, does not trigger
+     reflow cascade. `left`/`top`/`width`/`height` rather than `transform: scale()`: this resizes
+     both dimensions independently to match a target rectangle, and a non-uniform scale would
+     distort its border thickness and corner radius - a worse artifact than the reflow it would
+     avoid, and there is none to avoid here since every sibling in this layer is absolute too. */
   transition:
     left var(--duration-fast) var(--easing-standard),
     top var(--duration-fast) var(--easing-standard),
@@ -170,16 +175,20 @@
 }
 
 /*
- * The one accent glyph in the chrome, and the design asks for it by name: it identifies *which*
- * folder this window is, which is state rather than decoration. Everything else in this bar is
- * ink - see the accent audit in docs/DESIGN.md.
+ * Ink by default, like every other glyph in this bar - never a hardcoded accent (11a).
+ *
+ * The design's mockup showed this icon in accent cyan, but the folder behind it ("Longplay") was
+ * never tinted - its artwork is plain navy. The icon was cyan because it defaulted there, which is
+ * exactly what the accent audit forbids in window chrome. A folder the user *did* tint shows that
+ * tint here, through `--window-icon-tint` (set inline in `Window.tsx`), cyan included - that is
+ * the audit's own allowance for "a folder tint the user chose", not an exception for this glyph.
  */
 .aura-window-icon {
   flex: none;
   display: grid;
   place-items: center;
   font-size: 22px;
-  color: var(--color-accent);
+  color: var(--window-icon-tint, color-mix(in srgb, var(--color-text) 90%, transparent));
 }
 
 .aura-window-heading {

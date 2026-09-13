@@ -156,6 +156,10 @@
 .aura-taskbar-indicator {
   position: absolute;
   border-radius: 2px;
+  /* motion-budget exception: recorded in docs, see Prompt 11b - out-of-flow, does not trigger
+     reflow cascade. `width` rather than `transform: scaleX()`: at 3px tall with a 2px radius this
+     is already a stadium (the radius exceeds half the height), and scaling it horizontally would
+     smear the rounded end-caps into an ellipse instead of keeping them circular. */
   transition:
     width var(--duration-base) var(--easing-emphasized),
     background var(--duration-base) var(--easing-standard);

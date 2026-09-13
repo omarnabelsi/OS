@@ -59,6 +59,7 @@ function win(
     title: 'Games',
     subtitle: 'Smart folder',
     icon: null,
+    iconColor: null,
     rect,
     mode,
     zIndex: 100,

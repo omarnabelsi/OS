@@ -29,7 +29,7 @@ import { useFocusable } from '@/focus';
 import { assetUrl } from '@/lib/assetUrl';
 import { Surface } from '@/surface';
 
-import { Icon, type IconName } from '../Icon';
+import { Icon, isIconName } from '../Icon';
 import { pickShape, resolveGeometry } from './folderShape';
 import { useFolderShapes } from './FolderGlyph';
 import { useDragGesture } from './useDragGesture';
@@ -114,7 +114,13 @@ export function Folder({
   const label = item.labelOverride ?? folder?.label ?? 'Untitled';
   const cover = folder?.cover ? assetUrl(folder.cover) : undefined;
   const tint = folder?.color ?? undefined;
-  const icon = (item.iconOverride ?? folder?.icon) as IconName | undefined;
+
+  // `icon` is either a theme icon key or a user-picked image path (11d) - the two share a column,
+  // so a value that is not one of the active theme's known names is resolved as a path instead,
+  // through the same `assetUrl` the cover above already goes through.
+  const iconValue = item.iconOverride ?? folder?.icon ?? undefined;
+  const knownIcon = iconValue && isIconName(iconValue) ? iconValue : undefined;
+  const customIcon = iconValue && !knownIcon ? assetUrl(iconValue) : undefined;
 
   /*
    * All four states are CSS, driven by the data attributes below. They all animate the same
@@ -173,9 +179,18 @@ export function Folder({
             </>
           ) : null}
 
-          <span className="aura-folder-icon">
-            <Icon name={icon || 'files'} size="1em" />
-          </span>
+          {!cover && customIcon ? (
+            <img
+              className="aura-folder-icon aura-folder-icon-image"
+              src={customIcon}
+              alt=""
+              draggable={false}
+            />
+          ) : (
+            <span className="aura-folder-icon">
+              <Icon name={knownIcon || 'files'} size="1em" />
+            </span>
+          )}
         </Surface>
       </span>
 

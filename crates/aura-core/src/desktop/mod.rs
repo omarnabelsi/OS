@@ -27,6 +27,19 @@ pub const SEEDED_RECENT: &str = "smart:recently-played";
 pub const WIDGET_CLOCK: &str = "clock";
 pub const WIDGET_NOW_PLAYING: &str = "now-playing";
 
+/*
+ * Keys into `desktop_seeded_defaults` (docs/RISKS.md R15) - stable ids for "has this default been
+ * offered to this desktop", never a display name (which can change) and never the item itself
+ * (which the user gets to delete). Prefixed by kind so a future default with the same word in a
+ * different slot - a `widget.games` next to `folder.smart-games`, say - cannot collide.
+ */
+const SEED_KEY_GAMES: &str = "folder.smart-games";
+const SEED_KEY_APPS: &str = "folder.smart-apps";
+const SEED_KEY_FAVOURITES: &str = "folder.smart-favourites";
+const SEED_KEY_RECENT: &str = "folder.smart-recently-played";
+const SEED_KEY_WIDGET_CLOCK: &str = "widget.clock";
+const SEED_KEY_WIDGET_NOW_PLAYING: &str = "widget.now-playing";
+
 fn emit_changed(core: &Core, reason: &str) {
     core.sink.emit(CoreEvent::DesktopUpdated(DesktopUpdated {
         reason: reason.to_string(),
@@ -185,6 +198,53 @@ pub fn set_folder_cover(core: &Core, id: &str, source: &str) -> Result<Folder> {
     Ok(folder)
 }
 
+/// Copy a user-chosen image into the artwork cache and make it a folder's icon.
+///
+/// The read side already tries `folders.icon` as a theme icon key first and falls back to
+/// resolving it as a path (`FolderGlyph`, `Folder`) - this is the write side of that: same column,
+/// same cache the cover picker copies into, just `ArtworkKind::Icon` instead of `Grid` so the two
+/// never collide in `<artwork_dir>/folder-<id>/`. The copy exists for the same reason a cover's
+/// does - a path pointing straight at the user's own file breaks the moment they move or rename it.
+pub fn set_folder_icon(core: &Core, id: &str, source: &str) -> Result<Folder> {
+    if db::folders::get(&core.db, id)?.is_none() {
+        return Err(CoreError::NotFound(format!("folder `{id}`")));
+    }
+
+    let source_file = std::path::Path::new(source.trim());
+    if !source_file.is_file() {
+        return Err(CoreError::NotFound(format!("`{source}` is not a file")));
+    }
+    let bytes = std::fs::metadata(source_file)?.len();
+    if bytes > crate::artwork::cache::MAX_BYTES {
+        return Err(CoreError::Invalid(format!(
+            "`{source}` is {bytes} bytes, over the {} byte limit",
+            crate::artwork::cache::MAX_BYTES
+        )));
+    }
+
+    let dest = crate::artwork::cache::override_path(
+        &core.paths.artwork_dir,
+        &format!("folder-{id}"),
+        crate::model::ArtworkKind::Icon,
+        source_file,
+    );
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(source_file, &dest)?;
+
+    let folder = db::folders::patch(
+        &core.db,
+        id,
+        &FolderPatch {
+            icon: Some(Some(dest.display().to_string())),
+            ..Default::default()
+        },
+    )?;
+    emit_changed(core, "folder_icon");
+    Ok(folder)
+}
+
 pub fn delete_folder(core: &Core, id: &str) -> Result<()> {
     if !db::folders::delete(&core.db, id)? {
         return Err(CoreError::NotFound(format!("folder `{id}`")));
@@ -254,38 +314,67 @@ pub fn reorder_taskbar(core: &Core, ids: &[String]) -> Result<()> {
 
 // ---- seeding ---------------------------------------------------------------------------------
 
-/// Lay out a first desktop that mirrors what the old home screen showed.
+/// Lay out a first desktop that mirrors what the old home screen showed, and give every desktop
+/// - old or new - whichever of these defaults it is still missing.
 ///
 /// A blank customisable desktop is worse than an opinionated one: the user upgrades, opens the
 /// app and must see their library, arranged. Today's three home rows become smart folders, so
 /// nothing is lost and everything becomes movable.
 ///
-/// Does nothing when a desktop already exists, so it is safe to call on every start.
+/// Not "if empty" any more, despite the name (kept - `Core::seed_desktop` and every caller already
+/// say "safe on every start", which stays true): a desktop that has existed for months is not
+/// empty, and a default added after that is still owed to it. `desktop_seeded_defaults`
+/// (docs/RISKS.md R15) is what makes running this every start safe either way - each default is
+/// offered to each desktop at most once, tracked by a row's presence rather than by whether the
+/// item is still there, so a user who deleted the clock does not get it back on the next restart,
+/// and a fifth default added next year reaches every desktop that predates it exactly once, the
+/// same way these six did on the desktops that predate *them*.
+///
+/// Returns the desktop only when this call is the one that created it (a real first run) - a
+/// backfill onto a desktop that already existed returns `None`, the same as the old "did nothing"
+/// did, so nothing that only cared about *first run* has to change.
 pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
-    if db::desktops::count(&core.db)? > 0 {
-        return Ok(None);
-    }
-
-    let desktop = Desktop {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: "Desktop".to_string(),
-        wallpaper: None,
-        grid: GridSettings::default(),
-        sort_order: 0,
+    let created = if db::desktops::count(&core.db)? == 0 {
+        let desktop = Desktop {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Desktop".to_string(),
+            wallpaper: None,
+            grid: GridSettings::default(),
+            sort_order: 0,
+        };
+        db::desktops::upsert(&core.db, &desktop)?;
+        Some(desktop)
+    } else {
+        None
     };
-    db::desktops::upsert(&core.db, &desktop)?;
 
-    /*
-     * The old `home.rows`, promoted into openable folders, clustered two by two on the left.
-     *
-     * The shapes vary on purpose. A first run that used one shape for everything would make the
-     * theme's other shapes look like dead settings - the shape is the most visible thing a folder
-     * has, and seeing three of them is how anyone discovers the folder editor can change it. Ids
-     * are per theme, and a folder whose shape the active theme does not offer falls back to that
-     * theme's first, so these names costing nothing on `aura-paper` is by design.
-     */
-    let seeds: [(&str, &str, EntryFilter, &str, &str); 4] = [
+    // No desktop UI exposes more than one today, but nothing below assumes there is exactly
+    // one - every desktop that exists gets the same backfill, including a second one someone
+    // made by hand.
+    for desktop in db::desktops::list(&core.db)? {
+        seed_folder_defaults(core, &desktop.id)?;
+        seed_widget_defaults(core, &desktop.id)?;
+    }
+    seed_taskbar(core)?;
+
+    if created.is_some() {
+        emit_changed(core, "seeded");
+        tracing::info!("seeded the default desktop");
+    }
+    Ok(created)
+}
+
+/// The old `home.rows`, promoted into openable folders, clustered two by two on the left.
+///
+/// The shapes vary on purpose. A first run that used one shape for everything would make the
+/// theme's other shapes look like dead settings - the shape is the most visible thing a folder
+/// has, and seeing three of them is how anyone discovers the folder editor can change it. Ids
+/// are per theme, and a folder whose shape the active theme does not offer falls back to that
+/// theme's first, so these names costing nothing on `aura-paper` is by design.
+fn seed_folder_defaults(core: &Core, desktop_id: &str) -> Result<()> {
+    let defaults: [(&str, &str, &str, EntryFilter, &str, &str); 4] = [
         (
+            SEED_KEY_GAMES,
             SEEDED_GAMES,
             "Games",
             EntryFilter {
@@ -296,6 +385,7 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
             "rounded",
         ),
         (
+            SEED_KEY_APPS,
             SEEDED_APPS,
             "Apps",
             EntryFilter {
@@ -306,6 +396,7 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
             "capsule",
         ),
         (
+            SEED_KEY_FAVOURITES,
             SEEDED_FAVOURITES,
             "Favourites",
             EntryFilter {
@@ -316,6 +407,7 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
             "tab",
         ),
         (
+            SEED_KEY_RECENT,
             SEEDED_RECENT,
             "Recently played",
             EntryFilter {
@@ -327,7 +419,6 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
             "rounded",
         ),
     ];
-    let seed_count = seeds.len();
 
     /*
      * Two columns wide, not one tall.
@@ -338,7 +429,12 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
      * by two fits, and still clusters left of the widgets in column five.
      */
     const SEED_COLUMNS: usize = 2;
-    for (index, (locator, label, filter, icon, shape)) in seeds.into_iter().enumerate() {
+    for (index, (seed_key, locator, label, filter, icon, shape)) in defaults.into_iter().enumerate()
+    {
+        if db::desktops::is_seeded(&core.db, desktop_id, seed_key)? {
+            continue;
+        }
+
         // Reuse the row if a previous partial seed left it behind, so ids stay stable.
         let folder = match db::folders::find_by_path(&core.db, locator)? {
             Some(existing) => existing,
@@ -358,7 +454,7 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
         db::desktops::add_item(
             &core.db,
             &NewDesktopItem {
-                desktop_id: desktop.id.clone(),
+                desktop_id: desktop_id.to_string(),
                 kind: Some(DesktopItemKind::Folder),
                 target_id: Some(folder.id),
                 x: (index % SEED_COLUMNS) as i64,
@@ -366,22 +462,32 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
                 ..Default::default()
             },
         )?;
+        db::desktops::mark_seeded(&core.db, desktop_id, seed_key, crate::now_secs())?;
     }
+    Ok(())
+}
 
-    /*
-     * The widgets, holding the right-hand side.
-     *
-     * Placed on the same grid as everything else rather than pinned to a corner: a widget is a
-     * `DesktopItem` like a folder is, so it drags, snaps and survives a restart through exactly
-     * the same code, and the arrangement is the user's from the first run. Column 5 of seven,
-     * two cells wide, which leaves the four seeded folders clustered left with the composition
-     * of the design.
-     */
-    for (row, widget) in [WIDGET_CLOCK, WIDGET_NOW_PLAYING].into_iter().enumerate() {
+/// The widgets, holding the right-hand side.
+///
+/// Placed on the same grid as everything else rather than pinned to a corner: a widget is a
+/// `DesktopItem` like a folder is, so it drags, snaps and survives a restart through exactly
+/// the same code, and the arrangement is the user's from the first run. Column 5 of seven,
+/// two cells wide, which leaves the four seeded folders clustered left with the composition
+/// of the design.
+fn seed_widget_defaults(core: &Core, desktop_id: &str) -> Result<()> {
+    let defaults = [
+        (SEED_KEY_WIDGET_CLOCK, WIDGET_CLOCK),
+        (SEED_KEY_WIDGET_NOW_PLAYING, WIDGET_NOW_PLAYING),
+    ];
+    for (row, (seed_key, widget)) in defaults.into_iter().enumerate() {
+        if db::desktops::is_seeded(&core.db, desktop_id, seed_key)? {
+            continue;
+        }
+
         db::desktops::add_item(
             &core.db,
             &NewDesktopItem {
-                desktop_id: desktop.id.clone(),
+                desktop_id: desktop_id.to_string(),
                 kind: Some(DesktopItemKind::Widget),
                 target_id: Some(widget.to_string()),
                 x: 5,
@@ -391,12 +497,9 @@ pub fn seed_if_empty(core: &Core) -> Result<Option<Desktop>> {
                 ..Default::default()
             },
         )?;
+        db::desktops::mark_seeded(&core.db, desktop_id, seed_key, crate::now_secs())?;
     }
-
-    seed_taskbar(core)?;
-    emit_changed(core, "seeded");
-    tracing::info!("seeded the default desktop with {seed_count} folders and 2 widgets");
-    Ok(Some(desktop))
+    Ok(())
 }
 
 /// The launcher button, the system area, and the user's most-played titles pinned.
@@ -556,6 +659,124 @@ mod tests {
         // Idempotent: starting again must not double everything up.
         assert!(seed_if_empty(&core).unwrap().is_none());
         assert_eq!(list_items(&core, &desktop.id).unwrap().len(), items.len());
+    }
+
+    /// A desktop from before a default existed must gain it - "safe on every start" was already
+    /// the contract; this is the part that used to be broken.
+    #[test]
+    fn a_desktop_that_predates_a_default_gets_it_backfilled() {
+        let (_tmp, core, _sink) = test_core();
+
+        // A desktop from an install that predates every default below - no folders, no widgets,
+        // as an upgrade migration alone would leave one.
+        let desktop = Desktop {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Desktop".to_string(),
+            wallpaper: None,
+            grid: GridSettings::default(),
+            sort_order: 0,
+        };
+        db::desktops::upsert(&core.db, &desktop).unwrap();
+
+        // Not a first run - the desktop already existed - so no new desktop is reported back.
+        assert!(seed_if_empty(&core).unwrap().is_none());
+
+        let items = list_items(&core, &desktop.id).unwrap();
+        assert_eq!(
+            items
+                .iter()
+                .filter(|i| i.kind == DesktopItemKind::Folder)
+                .count(),
+            4,
+            "the pre-existing desktop must still gain the four smart folders"
+        );
+        let widget_ids: std::collections::BTreeSet<&str> = items
+            .iter()
+            .filter_map(|i| i.target_id.as_deref())
+            .filter(|id| *id == WIDGET_CLOCK || *id == WIDGET_NOW_PLAYING)
+            .collect();
+        assert_eq!(widget_ids.len(), 2, "and both widgets");
+    }
+
+    /// Delete a seeded default, restart twice: it must not come back. Presence in
+    /// `desktop_seeded_defaults` is what a restart checks, never whether the item survived.
+    #[test]
+    fn a_deleted_default_does_not_come_back() {
+        let (_tmp, core, _sink) = test_core();
+        let desktop = seed_if_empty(&core).unwrap().unwrap();
+
+        let clock = list_items(&core, &desktop.id)
+            .unwrap()
+            .into_iter()
+            .find(|i| i.target_id.as_deref() == Some(WIDGET_CLOCK))
+            .expect("the clock was seeded");
+        db::desktops::remove_item(&core.db, &clock.id).unwrap();
+
+        // Two more "starts".
+        seed_if_empty(&core).unwrap();
+        seed_if_empty(&core).unwrap();
+
+        let items = list_items(&core, &desktop.id).unwrap();
+        assert!(
+            !items
+                .iter()
+                .any(|i| i.target_id.as_deref() == Some(WIDGET_CLOCK)),
+            "a widget the user removed must not reappear on a later start"
+        );
+        // The other widget, untouched by the deletion, is still exactly one - not duplicated by
+        // either of the two later calls.
+        assert_eq!(
+            items
+                .iter()
+                .filter(|i| i.target_id.as_deref() == Some(WIDGET_NOW_PLAYING))
+                .count(),
+            1
+        );
+    }
+
+    /// A default added after a desktop was already fully seeded must still reach it, without
+    /// touching the defaults that desktop already resolved.
+    #[test]
+    fn a_new_default_reaches_an_already_seeded_desktop_without_touching_the_others() {
+        let (_tmp, core, _sink) = test_core();
+        let desktop = seed_if_empty(&core).unwrap().unwrap();
+        let before = list_items(&core, &desktop.id).unwrap();
+
+        // A throwaway sixth default, added the way a real one would be next year.
+        const SEED_KEY_TEST_WIDGET: &str = "widget.test-only";
+        assert!(!db::desktops::is_seeded(&core.db, &desktop.id, SEED_KEY_TEST_WIDGET).unwrap());
+        db::desktops::add_item(
+            &core.db,
+            &NewDesktopItem {
+                desktop_id: desktop.id.clone(),
+                kind: Some(DesktopItemKind::Widget),
+                target_id: Some("test-only".to_string()),
+                x: 5,
+                y: 2,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        db::desktops::mark_seeded(
+            &core.db,
+            &desktop.id,
+            SEED_KEY_TEST_WIDGET,
+            crate::now_secs(),
+        )
+        .unwrap();
+
+        // The desktop the new default reached is untouched otherwise: another "start" must not
+        // add a second copy of it, nor touch any of the six defaults already resolved there.
+        seed_if_empty(&core).unwrap();
+        let after = list_items(&core, &desktop.id).unwrap();
+        assert_eq!(after.len(), before.len() + 1, "exactly the one new item");
+        assert_eq!(
+            after
+                .iter()
+                .filter(|i| i.target_id.as_deref() == Some("test-only"))
+                .count(),
+            1
+        );
     }
 
     #[test]

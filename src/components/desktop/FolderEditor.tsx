@@ -21,12 +21,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, type DesktopItem, type Folder as FolderRecord, type FolderLayout } from '@/bridge';
 import { useFocusable } from '@/focus';
+import { assetUrl } from '@/lib/assetUrl';
 import { useDesktopStore } from '@/store';
 import { useTheme } from '@/theme';
 import type { WindowInstance } from '@/wm';
 import { useWmStore } from '@/wm';
 
-import { Icon, type IconName } from '../Icon';
+import { Icon, isIconName, type IconName } from '../Icon';
 import { Folder } from './Folder';
 import { pickShape, resolveGeometry } from './folderShape';
 import { useFolderShapes } from './FolderGlyph';
@@ -202,6 +203,11 @@ export function FolderEditor({ window: win }: { window: WindowInstance }): React
   const tint = folder.color?.toLowerCase() ?? null;
   const isCustomTint = tint !== null && !palette.some((hex) => hex.toLowerCase() === tint);
 
+  // `folder.icon` is either a theme icon key or a user-picked image (11d) - the two share a
+  // column, so a value that is not one of `FOLDER_ICONS` is a custom icon, not an unset field.
+  const isCustomIcon = Boolean(folder.icon) && !isIconName(folder.icon);
+  const customIconUrl = isCustomIcon ? assetUrl(folder.icon) : undefined;
+
   return (
     <div className="aura-editor">
       <aside className="aura-editor-preview">
@@ -334,6 +340,33 @@ export function FolderEditor({ window: win }: { window: WindowInstance }): React
                   <Icon name={name} size="1.1em" />
                 </Choice>
               ))}
+
+              <Choice
+                group={group}
+                id="icon-custom"
+                active={isCustomIcon}
+                label="Custom image"
+                onPick={() => {
+                  void (async () => {
+                    const path = await api.pickFile('image');
+                    // `setFolderIcon`, not an `icon` patch straight from the picker: the host
+                    // copies the image into the artwork cache, the same way a cover does, so it
+                    // survives the original file being moved.
+                    if (path) await api.setFolderIcon(folder.id, path);
+                  })();
+                }}
+              >
+                {customIconUrl ? (
+                  <img
+                    className="aura-choice-icon-image"
+                    src={customIconUrl}
+                    alt=""
+                    draggable={false}
+                  />
+                ) : (
+                  <span aria-hidden="true">···</span>
+                )}
+              </Choice>
             </div>
           </Field>
 

@@ -119,6 +119,7 @@ pub fn run() {
             ipc::commands::create_folder,
             ipc::commands::update_folder,
             ipc::commands::set_folder_cover,
+            ipc::commands::set_folder_icon,
             ipc::commands::delete_folder,
             ipc::commands::folder_contents,
             ipc::commands::list_taskbar_items,

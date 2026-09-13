@@ -1289,6 +1289,14 @@ ever. */
   font-size: 1.9rem;
 }
 
+/* A custom icon's thumbnail, in the same button a theme icon or the "..." mark sits in. */
+.aura-choice-icon-image {
+  width: 1.6em;
+  height: 1.6em;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
 .aura-choice[data-wide] {
   display: flex;
   justify-content: flex-start;

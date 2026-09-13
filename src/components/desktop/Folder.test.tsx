@@ -183,6 +183,22 @@ describe('Folder', () => {
     expect(document.querySelector('.aura-folder-cover-scrim')).not.toBeNull();
   });
 
+  it("draws a custom icon image, when `icon` is not one of the theme's names", () => {
+    renderFolder({ folder: folder({ icon: 'C:/pics/icon.png' }) });
+    const img = document.querySelector('.aura-folder-icon-image') as HTMLImageElement | null;
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toBe('C:/pics/icon.png');
+    // Not run through the vector icon set - a bad name silently drawing nothing is the bug 11d
+    // fixed, and this is what proves it stays fixed.
+    expect(document.querySelector('.aura-folder-icon svg')).toBeNull();
+  });
+
+  it("still draws a known theme icon by name, not as an image", () => {
+    renderFolder({ folder: folder({ icon: 'star' }) });
+    expect(document.querySelector('.aura-folder-icon-image')).toBeNull();
+    expect(document.querySelector('.aura-folder-icon svg')).not.toBeNull();
+  });
+
   it('rises from e1 to e3 when focused', () => {
     renderFolder();
     expect(document.querySelector('.aura-folder-body')?.className).toContain('aura-surface-e1');

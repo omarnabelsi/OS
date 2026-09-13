@@ -170,6 +170,16 @@ describe('FolderEditor', () => {
     expect(fakeApi.updateFolder).not.toHaveBeenCalledWith('f1', { cover: 'C:/pics/cover.png' });
   });
 
+  it('sends a chosen icon image through the artwork cache, never as a raw path', async () => {
+    fakeApi.pickFile.mockResolvedValue('C:/pics/icon.png');
+    fakeApi.setFolderIcon.mockResolvedValue({ ...folder, icon: 'C:/cache/folder-f1/icon-user-ab.png' });
+    openEditor();
+
+    fireEvent.click(screen.getByLabelText('Custom image'));
+    await waitFor(() => expect(fakeApi.setFolderIcon).toHaveBeenCalledWith('f1', 'C:/pics/icon.png'));
+    expect(fakeApi.updateFolder).not.toHaveBeenCalledWith('f1', { icon: 'C:/pics/icon.png' });
+  });
+
   it('puts everything back on Cancel, and closes', async () => {
     const { win } = openEditor();
 

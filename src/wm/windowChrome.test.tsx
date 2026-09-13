@@ -39,6 +39,7 @@ function open(overrides: Partial<WindowInstance> = {}): WindowInstance {
     title: 'Games',
     subtitle: 'Smart folder',
     icon: 'games',
+    iconColor: null,
     rect: { x: 200, y: 140, width: 1300, height: 790 },
     mode: 'normal',
     zIndex: 100,
@@ -70,6 +71,20 @@ describe('window chrome', () => {
     const instance = open({ subtitle: null });
     const { container } = render(<Window window={instance}>body</Window>);
     expect(container.querySelector('.aura-window-subtitle')).toBeNull();
+  });
+
+  it("leaves the title bar icon uncoloured for a folder nobody tinted", () => {
+    const instance = open({ iconColor: null });
+    const { container } = render(<Window window={instance}>body</Window>);
+    // No inline colour at all - the CSS default (ink) applies, not a hardcoded accent (11a).
+    expect(container.querySelector('.aura-window-icon')?.getAttribute('style')).toBeFalsy();
+  });
+
+  it("shows the folder's own tint on the title bar icon, whatever colour that is", () => {
+    const instance = open({ iconColor: '#b48cff' });
+    const { container } = render(<Window window={instance}>body</Window>);
+    const style = container.querySelector('.aura-window-icon')?.getAttribute('style') ?? '';
+    expect(style.replace(/\s+/g, '')).toContain('--window-icon-tint:#b48cff');
   });
 
   it('gives the bar four buttons: back, minimise, maximise and close', () => {

@@ -71,14 +71,12 @@ const ALLOWED: Record<string, string> = {
   '.aura-swatch[data-custom]': 'a spectrum, in a control whose subject is colour',
 
   /*
-   * The one the design asks for twice and forbids once.
-   *
-   * Prompt 7 specifies "folder icon in accent cyan" in the window title bar; the accent rules say
-   * never in title bars. It is a single glyph saying *which* folder this window is - the same
-   * class as a state mark - so it stays, and the tension is recorded here rather than resolved
-   * silently in either direction.
+   * `.aura-window-icon` used to be here too: prompt 7 asked for the title bar's folder icon in
+   * accent cyan, which is exactly what "never in title bars" forbids. Resolved in 11a - the icon
+   * is ink by default and only ever shows a colour the user actually chose as that folder's tint
+   * (`--window-icon-tint`, set inline, never `--color-accent` in this stylesheet), so there is
+   * nothing here for this test to see any more.
    */
-  '.aura-window-icon': 'identifies which folder the window is - one glyph, specified by the design',
 };
 
 /** `selector { ... accent ... }` pairs, found by walking lines rather than parsing CSS. */

@@ -751,6 +751,12 @@ export const mockApi: AuraApi = {
     return mockApi.updateFolder(id, { cover: path });
   },
 
+  setFolderIcon: async (id, path) => {
+    // Same modelling as `setFolderCover` above: the mock has no cache to copy into, so it stores
+    // the path it was handed and only exercises the shape of the call.
+    return mockApi.updateFolder(id, { icon: path });
+  },
+
   deleteFolder: async (id) => {
     desktopState.folders = desktopState.folders.filter((f) => f.id !== id);
     // Same pruning the core does: an item pointing at a gone folder would open nothing.

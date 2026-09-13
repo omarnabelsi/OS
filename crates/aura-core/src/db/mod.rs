@@ -23,8 +23,11 @@ use crate::error::Result;
 pub const SCHEMA_SQL: &str = include_str!("schema.sql");
 /// v2 adds the desktop surface: desktops, desktop_items, taskbar_items and the folder columns.
 pub const SCHEMA_V2_SQL: &str = include_str!("schema_v2.sql");
+/// v3 adds `desktop_seeded_defaults`, so a default item added later can reach a desktop that
+/// already existed - see docs/RISKS.md R15.
+pub const SCHEMA_V3_SQL: &str = include_str!("schema_v3.sql");
 /// Bump when the schema changes and add a step to [`Db::migrate`].
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -85,6 +88,9 @@ impl Db {
                     ("window_state", "TEXT"),
                 ],
             )?;
+        }
+        if version < 3 {
+            conn.execute_batch(SCHEMA_V3_SQL)?;
         }
         if version < SCHEMA_VERSION {
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -157,20 +163,20 @@ mod tests {
         let n: i64 = db
             .conn()
             .query_row(
-                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('entries','artwork','stats','collections','folders','themes','settings','desktops','desktop_items','taskbar_items')",
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('entries','artwork','stats','collections','folders','themes','settings','desktops','desktop_items','taskbar_items','desktop_seeded_defaults')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(n, 10);
+        assert_eq!(n, 11);
         // idempotent
         db.migrate().unwrap();
     }
 
-    /// The upgrade path that matters: a v1 database with real rows in it must reach v2 with
-    /// every row intact and the new columns available.
+    /// The upgrade path that matters: a v1 database with real rows in it must reach the current
+    /// version with every row intact and the new columns available.
     #[test]
-    fn v1_data_survives_the_v2_upgrade() {
+    fn v1_data_survives_the_upgrade() {
         let db = Db::open_in_memory().unwrap();
         {
             let conn = db.conn();
@@ -195,7 +201,7 @@ mod tests {
         }
 
         db.migrate().unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), SCHEMA_VERSION);
 
         let conn = db.conn();
         let (playtime, fav): (i64, i64) = conn
@@ -262,6 +268,6 @@ mod tests {
 
         db.migrate()
             .expect("replaying the v2 step must not fail on duplicate columns");
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), SCHEMA_VERSION);
     }
 }

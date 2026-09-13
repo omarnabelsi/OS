@@ -257,6 +257,11 @@ impl Core {
         desktop::set_folder_cover(self, id, path)
     }
 
+    /// Copy an image into the artwork cache and set it as this folder's icon.
+    pub fn set_folder_icon(&self, id: &str, path: &str) -> Result<Folder> {
+        desktop::set_folder_icon(self, id, path)
+    }
+
     pub fn delete_folder(&self, id: &str) -> Result<()> {
         desktop::delete_folder(self, id)
     }

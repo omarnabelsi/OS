@@ -40,6 +40,15 @@ export interface WindowInstance {
   /** The quiet second line beside the title. Null when there is nothing true to say. */
   subtitle: string | null;
   icon: IconName | null;
+  /**
+   * The icon's colour when the folder it names has one the user chose, or null.
+   *
+   * Never a hardcoded accent (11a) - the title bar's icon is ink unless a folder was explicitly
+   * tinted, in which case it shows *that* colour, cyan included. The mockup's icon was cyan
+   * because the folder behind it happened to be tinted that way, not because a folder icon is
+   * accent by default.
+   */
+  iconColor: string | null;
   /** Geometry in the *normal* mode. Maximise does not overwrite it. */
   rect: Rect;
   mode: WindowMode;
@@ -73,6 +82,7 @@ export interface OpenWindowSpec {
   title: string;
   subtitle?: string | null;
   icon?: IconName | null;
+  iconColor?: string | null;
   rect?: Rect;
   /**
    * A preferred size, still placed by the cascade. `rect` pins position *and* size, which is
@@ -223,6 +233,7 @@ export const useWmStore = create<WmState>()((set, get) => ({
       title: spec.title,
       subtitle: spec.subtitle ?? null,
       icon: spec.icon ?? null,
+      iconColor: spec.iconColor ?? null,
       rect: constrainToDesktop(clampSize(placement(spec, bounds, windows.length)), bounds),
       mode: spec.mode ?? 'normal',
       zIndex: TOP_Z + windows.length,

@@ -255,7 +255,13 @@ export function Window({ window: win, children }: WindowProps): React.JSX.Elemen
           <span className="aura-window-title-divider" aria-hidden="true" />
 
           {win.icon ? (
-            <span className="aura-window-icon" aria-hidden="true">
+            <span
+              className="aura-window-icon"
+              aria-hidden="true"
+              // Ink unless the folder this window shows has a tint the user chose (11a) - never a
+              // hardcoded accent, whatever colour that tint turns out to be.
+              style={win.iconColor ? ({ '--window-icon-tint': win.iconColor } as React.CSSProperties) : undefined}
+            >
               <Icon name={win.icon} size="1em" />
             </span>
           ) : null}

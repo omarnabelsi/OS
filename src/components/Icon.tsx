@@ -119,6 +119,18 @@ const PATHS: Record<IconName, React.JSX.Element> = {
   ),
 };
 
+/** Every name the built-in set actually draws - what a folder's `icon` can name and still be one. */
+export const ICON_NAMES: readonly IconName[] = Object.keys(PATHS) as IconName[];
+
+/**
+ * A folder's `icon` column holds either a theme icon key or a user-picked image path (11d): the
+ * two share a column, so telling them apart is what makes the custom-icon control safe. Anything
+ * that is not one of the names above is resolved as a path instead, never drawn as a blank glyph.
+ */
+export function isIconName(value: string | null | undefined): value is IconName {
+  return !!value && (ICON_NAMES as readonly string[]).includes(value);
+}
+
 export interface IconProps {
   name: IconName;
   size?: number | string;

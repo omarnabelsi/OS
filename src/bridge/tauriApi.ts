@@ -49,6 +49,7 @@ export const tauriApi: AuraApi = {
   createFolder: (input) => invoke('create_folder', { input }),
   updateFolder: (id, patch) => invoke('update_folder', { id, patch }),
   setFolderCover: (id, path) => invoke('set_folder_cover', { id, path }),
+  setFolderIcon: (id, path) => invoke('set_folder_icon', { id, path }),
   deleteFolder: (id) => invoke('delete_folder', { id }),
   folderContents: (id) => invoke('folder_contents', { id }),
 

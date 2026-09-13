@@ -210,6 +210,29 @@ blurred surface, so the steady state is two - the focused window and the taskbar
 take both to zero with `blur.surface: 0px`, as `aura-paper` does. Still to profile on a low-end GPU
 with a shader wallpaper running.
 
+**The motion budget, and its two recorded exceptions (11b).** The rule elsewhere is that an
+animation may only touch `transform`, `opacity` or `box-shadow` - the three a browser can composite
+without laying anything out again - so a shell with several animated surfaces at once does not
+turn every frame into a reflow cascade. Two sites animate a layout property instead, and both are
+deliberate, not oversights:
+
+- `.aura-taskbar-indicator` (`taskbar.css`) animates `width` between the running (6px) and focused
+  (20px) states. `transform: scaleX()` would need two fixed circular end-caps plus a separately
+  scaling middle segment to keep this pill-shaped element's rounded ends round - real markup
+  complexity for a 14px element that updates rarely.
+- `.aura-window-snap-preview` (`window.css`) animates `left`/`top`/`width`/`height` to the target
+  drop rectangle. It resizes two dimensions independently; `transform: scale()` under a non-uniform
+  ratio would distort its border thickness and corner radius, a worse artifact than the reflow it
+  would avoid.
+
+Both are safe because both are exempt from what the rule protects against: `.aura-taskbar-indicator`
+is `position: absolute` inside a flex button (absolutely positioned children take no part in flex
+layout), and `.aura-window-snap-preview` is `position: absolute` inside `.aura-window-layer`, where
+every sibling - each open `.aura-window` - is `position: absolute` too. Neither has a sibling that
+measures its box, so animating a layout property here never cascades into one. Marked at each site
+with `// motion-budget exception: recorded in docs, see Prompt 11b`, so a future edit that "fixes"
+either back toward `transform` re-reads why first.
+
 ## R13 - Scope creep into becoming a real shell
 
 **Status: Live. Severity: critical if acted on.**
@@ -247,6 +270,19 @@ The seeded default (PLAN section 09) is therefore a shipping requirement, not a 
 one desktop, the old home rows as smart folders down the first column, a taskbar with the
 launcher, the clock and the most-played titles pinned. Implemented in
 `crates/aura-core/src/desktop/mod.rs::seed_if_empty` and covered by tests.
+
+**Addendum (11c): a default added later has to reach a desktop that already existed.** The first
+version of this only ran when zero desktops existed, so a widget added after someone had already
+been using the shell never reached them - upgrading is not a first run. Simply re-running the seed
+against a non-empty desktop is wrong too: a user who deliberately deleted the clock would get it
+back on every subsequent start. `desktop_seeded_defaults` (schema v3) tracks which default items -
+by a stable `seed_key`, never a display name or the item's own id - have been *offered* to which
+desktop, independent of whether the item is still there. `seed_if_empty` now runs its backfill
+against every existing desktop on every start (not just when creating the first one), and a
+default is inserted only when its `seed_key` has no row for that desktop yet. That is also what
+makes adding a seventh default next year free: it reaches every desktop that predates it exactly
+once, the same way the six here reached desktops that predated *them*, with no one-off migration
+script and no special case for "existing users".
 
 ---
 
