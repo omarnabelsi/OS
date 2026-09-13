@@ -59,6 +59,24 @@ V1 "The Face" skeleton.
   reverting it". A chosen cover goes through `set_folder_cover`, which copies the image into the
   artwork cache rather than storing a path into the user's own files.
 
+### Added - two themes, and the proof
+
+- **`aura-ember` and `aura-daylight`: tokens, a manifest, a layout and three silhouettes each, and
+  not one line of CSS** (`hasCss: false`). Ember is a warm near-black ground with an amber accent,
+  8px corners and `blur: 0` - the important one, because with no glass to lean on the elevation
+  ladder has to carry every level on shadow and surface alpha alone, and it does. Daylight is a
+  cool light room with an indigo accent, 28px corners and real glass at 18px, whose focus ring is
+  the theme's ink rather than white - the ring is a token, the *logic* is structural.
+- The background field's colours became an `aurora` token group, because a theme that cannot
+  restyle the ground is not themeable: Ember on a warm ground with cyan aurora blobs was the
+  proof. Nothing in a component changed - `base.css` already carried the fallbacks.
+- `theme:validate` now enumerates every folder in `themes/` instead of naming two by hand, so a
+  third theme cannot be validated by nobody.
+- `src/theme/bundledThemes.node.test.ts` holds every bundled theme to the structural rules and
+  measures the contrast floors rather than assuming them: body >= 4.5:1, display >= 3:1, dark ink
+  on the filled chip >= 4.5:1, and a focus ring that can be seen. Measured - Aura 18.51/7.25,
+  Ember 16.75/7.55, Daylight 16.14/4.6, Paper 14.99/4.61.
+
 ### Changed - accent discipline
 
 - **Audited every accent use in the shell and removed the six that could not be justified.** Cyan

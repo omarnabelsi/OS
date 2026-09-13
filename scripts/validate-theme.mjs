@@ -8,8 +8,9 @@
  *
  * Exit code 0 = valid (warnings are printed but do not fail), 1 = invalid.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ENGINE = 'aura-theme/1';
 const SOUND_SLOTS = ['move', 'select', 'back', 'launch', 'error'];
@@ -238,24 +239,46 @@ function validate(dir) {
   return manifest;
 }
 
-const target = process.argv[2];
-if (!target) {
-  console.error('usage: node scripts/validate-theme.mjs <theme-folder>');
-  process.exit(1);
+/*
+ * With no arguments, every bundled theme.
+ *
+ * The script used to take exactly one folder, and `theme:validate` named two of them by hand -
+ * so a third theme was validated by nobody until someone remembered to edit package.json.
+ */
+const targets = process.argv.slice(2);
+if (targets.length === 0) {
+  const root = fileURLToPath(new URL('../themes', import.meta.url));
+  targets.push(
+    ...readdirSync(root)
+      .map((name) => join(root, name))
+      .filter((path) => statSync(path).isDirectory()),
+  );
 }
-const dir = resolve(target);
-console.log(`Validating ${dir}${sep}`);
 
-const manifest = validate(dir);
+let failedThemes = 0;
+for (const target of targets) {
+  // The collectors are module-level, so each theme starts from an empty slate.
+  errors.length = 0;
+  warnings.length = 0;
 
-for (const w of warnings) console.log(`  warning  ${w}`);
-for (const e of errors) console.error(`  ERROR    ${e}`);
+  const dir = resolve(target);
+  console.log(`Validating ${dir}${sep}`);
 
-if (errors.length > 0) {
-  console.error(`\n${errors.length} error(s) - theme is not loadable.`);
-  process.exit(1);
+  const manifest = validate(dir);
+
+  for (const w of warnings) console.log(`  warning  ${w}`);
+  for (const e of errors) console.error(`  ERROR    ${e}`);
+
+  if (errors.length > 0) {
+    failedThemes++;
+    console.error(`\n${errors.length} error(s) - theme is not loadable.\n`);
+    continue;
+  }
+  console.log(
+    `\nOK - \`${manifest?.id}\` v${manifest?.version} is valid` +
+      (warnings.length ? ` (${warnings.length} warning(s))` : '') +
+      '\n',
+  );
 }
-console.log(
-  `\nOK - \`${manifest?.id}\` v${manifest?.version} is valid` +
-    (warnings.length ? ` (${warnings.length} warning(s))` : ''),
-);
+
+process.exit(failedThemes > 0 ? 1 : 0);

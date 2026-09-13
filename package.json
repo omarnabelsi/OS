@@ -17,7 +17,7 @@
     "smoke": "node scripts/smoke.mjs",
     "lint": "eslint src --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"themes/**/*.{json,css}\"",
-    "theme:validate": "node scripts/validate-theme.mjs themes/aura-default && node scripts/validate-theme.mjs themes/aura-paper",
+    "theme:validate": "node scripts/validate-theme.mjs",
     "theme:sounds": "node scripts/generate-sounds.mjs themes/aura-default/sounds",
     "icons": "tauri icon src-tauri/icons/source.png"
   },

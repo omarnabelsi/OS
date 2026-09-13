@@ -99,6 +99,7 @@ partial theme still renders:
 | `radius` | `sm` `md` `lg` `tile` `folderCapsule` |
 | `blur` | `background` `surface` |
 | `palette` | any number of named colours - the tints the folder editor offers |
+| `aurora` | `1`-`6`: the four primary washes of the background field and the two softer ones |
 | `spacing` | `edge` `gutter` `row` |
 | `easing` | `standard` `emphasized` |
 | `duration` | `fast` `base` `slow` |

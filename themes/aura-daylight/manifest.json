@@ -1,0 +1,13 @@
+{
+  "id": "aura-daylight",
+  "name": "Daylight",
+  "author": "Aura Shell",
+  "version": "1.0.0",
+  "description": "A light room: a cool paper ground, ink text, an indigo accent, 28px corners and real glass at 18px blur. The light counterpart to Aura, and the proof that the focus logic is structural - the ring is the theme's ink rather than white, and every other signal is unchanged. Ships tokens and three folder silhouettes, and no CSS whatsoever.",
+  "screenshots": [],
+  "minAppVersion": "0.1.0",
+  "engine": "aura-theme/1",
+  "sounds": {},
+  "shaders": {},
+  "hasCss": false
+}

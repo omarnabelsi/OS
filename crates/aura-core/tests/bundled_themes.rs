@@ -44,11 +44,24 @@ fn folder_shape_count(layout: &serde_json::Value) -> usize {
         .map_or(0, Vec::len)
 }
 
+/// The manifest as written on disk, for the assertions that are about what a theme *claims*.
+fn manifest_of(id: &str) -> serde_json::Value {
+    let path = repo_themes().join(id).join("manifest.json");
+    serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap()
+}
+
 #[test]
-fn the_repository_ships_both_themes() {
+fn the_repository_ships_the_reference_theme_and_the_proofs() {
     let ids = bundled_ids();
-    assert!(ids.iter().any(|id| id == "aura-default"), "{ids:?}");
-    assert!(ids.iter().any(|id| id == "aura-paper"), "{ids:?}");
+    for expected in [
+        "aura-default",
+        "aura-paper",
+        // The two that exist to prove a theme is only data: tokens, a layout and assets, no CSS.
+        "aura-ember",
+        "aura-daylight",
+    ] {
+        assert!(ids.iter().any(|id| id == expected), "{expected}: {ids:?}");
+    }
 }
 
 #[test]
@@ -91,21 +104,52 @@ fn every_bundled_theme_loads_with_all_its_folder_shapes_and_sounds() {
             "`{id}` offers the folder editor no shapes"
         );
 
-        // A missing slot plays nothing at all - the loader does not borrow another theme's file.
+        /*
+         * Sounds and CSS are *claims*, not requirements.
+         *
+         * This used to demand all five sounds and a stylesheet from every bundled theme, which
+         * was true of the two that existed when it was written and is not a rule: the validator
+         * only warns about a missing sound slot, and `hasCss: false` is a supported manifest
+         * value. `aura-ember` and `aura-daylight` ship neither on purpose - that is what makes
+         * them the proof that a theme is data. So what is checked is honesty: whatever a theme
+         * declares must actually load, and a theme that declares nothing gets nothing (the loader
+         * never borrows another theme's file).
+         */
+        let manifest = manifest_of(&id);
+
+        let declared_sounds = manifest
+            .get("sounds")
+            .and_then(|s| s.as_object())
+            .cloned()
+            .unwrap_or_default();
         for slot in ["move", "select", "back", "launch", "error"] {
-            let path = bundle
-                .sounds
-                .get(slot)
-                .unwrap_or_else(|| panic!("`{id}` has no `{slot}` sound"));
-            assert!(
-                Path::new(path).is_file(),
-                "`{id}` `{slot}` sound is missing: {path}"
-            );
+            match declared_sounds.get(slot) {
+                Some(_) => {
+                    let path = bundle.sounds.get(slot).unwrap_or_else(|| {
+                        panic!("`{id}` declares a `{slot}` sound but none loaded")
+                    });
+                    assert!(
+                        Path::new(path).is_file(),
+                        "`{id}` `{slot}` sound is missing: {path}"
+                    );
+                }
+                None => assert!(
+                    !bundle.sounds.contains_key(slot),
+                    "`{id}` declares no `{slot}` sound, so it must have none"
+                ),
+            }
         }
 
-        assert!(
-            !bundle.css.is_empty(),
-            "`{id}` declares theme.css but none loaded"
-        );
+        if manifest.get("hasCss").and_then(|v| v.as_bool()) == Some(false) {
+            assert!(
+                bundle.css.is_empty(),
+                "`{id}` says it has no CSS, so none may load"
+            );
+        } else {
+            assert!(
+                !bundle.css.is_empty(),
+                "`{id}` declares theme.css but none loaded"
+            );
+        }
     }
 }

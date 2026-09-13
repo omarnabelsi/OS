@@ -1,0 +1,13 @@
+{
+  "id": "aura-ember",
+  "name": "Ember",
+  "author": "Aura Shell",
+  "version": "1.0.0",
+  "description": "Warm coals: a near-black ember ground, an amber accent, tight 8px corners and no blur at all. The zero blur is the point - with no glass to lean on, the elevation ladder has to carry every level on shadow and surface alpha alone. Ships tokens and three folder silhouettes, and no CSS whatsoever.",
+  "screenshots": [],
+  "minAppVersion": "0.1.0",
+  "engine": "aura-theme/1",
+  "sounds": {},
+  "shaders": {},
+  "hasCss": false
+}
