@@ -451,17 +451,32 @@ fn seed_folder_defaults(core: &Core, desktop_id: &str) -> Result<()> {
             )?,
         };
 
-        db::desktops::add_item(
-            &core.db,
-            &NewDesktopItem {
-                desktop_id: desktop_id.to_string(),
-                kind: Some(DesktopItemKind::Folder),
-                target_id: Some(folder.id),
-                x: (index % SEED_COLUMNS) as i64,
-                y: (index / SEED_COLUMNS) as i64,
-                ..Default::default()
-            },
-        )?;
+        /*
+         * `desktop_seeded_defaults` did not exist before schema v3, so a desktop that already had
+         * this folder placed - every desktop that predates this table - starts with `is_seeded`
+         * false for a key it has actually long since resolved. Checking the desktop's own items
+         * is what keeps that desktop from getting a second copy of a folder it already has: only
+         * a desktop that truly lacks this folder gets one placed.
+         */
+        let already_placed = db::desktops::list_items(&core.db, desktop_id)?
+            .iter()
+            .any(|i| {
+                i.kind == DesktopItemKind::Folder
+                    && i.target_id.as_deref() == Some(folder.id.as_str())
+            });
+        if !already_placed {
+            db::desktops::add_item(
+                &core.db,
+                &NewDesktopItem {
+                    desktop_id: desktop_id.to_string(),
+                    kind: Some(DesktopItemKind::Folder),
+                    target_id: Some(folder.id),
+                    x: (index % SEED_COLUMNS) as i64,
+                    y: (index / SEED_COLUMNS) as i64,
+                    ..Default::default()
+                },
+            )?;
+        }
         db::desktops::mark_seeded(&core.db, desktop_id, seed_key, crate::now_secs())?;
     }
     Ok(())
@@ -484,19 +499,26 @@ fn seed_widget_defaults(core: &Core, desktop_id: &str) -> Result<()> {
             continue;
         }
 
-        db::desktops::add_item(
-            &core.db,
-            &NewDesktopItem {
-                desktop_id: desktop_id.to_string(),
-                kind: Some(DesktopItemKind::Widget),
-                target_id: Some(widget.to_string()),
-                x: 5,
-                y: row as i64,
-                width: Some(2),
-                height: Some(1),
-                ..Default::default()
-            },
-        )?;
+        // Same reasoning as the folder loop above: a desktop that already had this widget from
+        // before `desktop_seeded_defaults` existed must not get a second one.
+        let already_placed = db::desktops::list_items(&core.db, desktop_id)?
+            .iter()
+            .any(|i| i.kind == DesktopItemKind::Widget && i.target_id.as_deref() == Some(widget));
+        if !already_placed {
+            db::desktops::add_item(
+                &core.db,
+                &NewDesktopItem {
+                    desktop_id: desktop_id.to_string(),
+                    kind: Some(DesktopItemKind::Widget),
+                    target_id: Some(widget.to_string()),
+                    x: 5,
+                    y: row as i64,
+                    width: Some(2),
+                    height: Some(1),
+                    ..Default::default()
+                },
+            )?;
+        }
         db::desktops::mark_seeded(&core.db, desktop_id, seed_key, crate::now_secs())?;
     }
     Ok(())
@@ -696,6 +718,110 @@ mod tests {
             .filter(|id| *id == WIDGET_CLOCK || *id == WIDGET_NOW_PLAYING)
             .collect();
         assert_eq!(widget_ids.len(), 2, "and both widgets");
+    }
+
+    /// The regression this whole table exists to prevent: a desktop that already had its folders
+    /// and widgets placed *before* `desktop_seeded_defaults` existed - every real desktop upgrading
+    /// from schema v2 - must not get a second copy of each on the first start that can see the new
+    /// table. `is_seeded` alone cannot tell "never offered" apart from "offered before this table
+    /// existed", which is exactly what put two `Games` folders on top of each other at (0, 0) the
+    /// first time this shipped.
+    #[test]
+    fn a_desktop_with_pre_existing_items_from_before_the_tracking_table_is_not_duplicated() {
+        let (_tmp, core, _sink) = test_core();
+
+        let desktop = Desktop {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Desktop".to_string(),
+            wallpaper: None,
+            grid: GridSettings::default(),
+            sort_order: 0,
+        };
+        db::desktops::upsert(&core.db, &desktop).unwrap();
+
+        // Exactly what a schema-v2 desktop looks like: a folder and a widget already placed, and
+        // no row in `desktop_seeded_defaults` for either - that table did not exist yet.
+        let games = db::folders::create(
+            &core.db,
+            &NewFolder {
+                label: Some("Games".to_string()),
+                kind: Some(FolderKind::Smart),
+                filter: Some(EntryFilter {
+                    entry_type: Some(EntryType::Game),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        // Placed under the *old* one-column-of-four layout - wherever it was, it must not move.
+        db::desktops::add_item(
+            &core.db,
+            &NewDesktopItem {
+                desktop_id: desktop.id.clone(),
+                kind: Some(DesktopItemKind::Folder),
+                target_id: Some(games.id.clone()),
+                x: 0,
+                y: 0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        db::desktops::add_item(
+            &core.db,
+            &NewDesktopItem {
+                desktop_id: desktop.id.clone(),
+                kind: Some(DesktopItemKind::Widget),
+                target_id: Some(WIDGET_CLOCK.to_string()),
+                x: 5,
+                y: 0,
+                width: Some(2),
+                height: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        seed_if_empty(&core).unwrap();
+
+        let items = list_items(&core, &desktop.id).unwrap();
+        let games_items: Vec<_> = items
+            .iter()
+            .filter(|i| {
+                i.kind == DesktopItemKind::Folder
+                    && i.target_id.as_deref() == Some(games.id.as_str())
+            })
+            .collect();
+        assert_eq!(games_items.len(), 1, "Games must not be duplicated");
+        assert_eq!(
+            (games_items[0].x, games_items[0].y),
+            (0, 0),
+            "and must not move"
+        );
+
+        let clock_items: Vec<_> = items
+            .iter()
+            .filter(|i| {
+                i.kind == DesktopItemKind::Widget && i.target_id.as_deref() == Some(WIDGET_CLOCK)
+            })
+            .collect();
+        assert_eq!(
+            clock_items.len(),
+            1,
+            "the clock must not be duplicated either"
+        );
+
+        // The other three folders and the now-playing widget were genuinely missing, so they are
+        // the only things this run should have added.
+        assert_eq!(
+            items
+                .iter()
+                .filter(|i| i.kind == DesktopItemKind::Folder)
+                .count(),
+            4
+        );
+        assert!(db::desktops::is_seeded(&core.db, &desktop.id, SEED_KEY_GAMES).unwrap());
+        assert!(db::desktops::is_seeded(&core.db, &desktop.id, SEED_KEY_WIDGET_CLOCK).unwrap());
     }
 
     /// Delete a seeded default, restart twice: it must not come back. Presence in
