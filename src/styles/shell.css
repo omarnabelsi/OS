@@ -652,7 +652,9 @@
   width: var(--desktop-icon-size, 56px);
   height: var(--desktop-icon-size, 56px);
   font-size: var(--desktop-icon-size, 56px);
-  color: var(--color-accent);
+  /* Ink, not accent: a shortcut's fallback glyph reports nothing, and colouring it would make
+     cyan decoration. */
+  color: var(--color-text);
 }
 
 .aura-desktop-icon-art img {
@@ -693,7 +695,10 @@
 .aura-glyph-shape {
   position: absolute;
   inset: 0;
-  background: var(--folder-tint, var(--color-accent));
+  /* Untinted is ink, not accent. Defaulting the whole silhouette to cyan made every folder
+     nobody had tinted a large filled accent surface - the design's clearest 
+ever. */
+  background: var(--folder-tint, color-mix(in srgb, var(--color-text) 62%, transparent));
   mask-repeat: no-repeat;
   mask-position: center;
   mask-size: contain;
@@ -705,8 +710,8 @@
 /* No shape declared, or the theme's asset was rejected: a plain rounded plate still reads. */
 .aura-glyph-shape[data-fallback] {
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--folder-tint, var(--color-accent)) 30%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--folder-tint, var(--color-accent)) 55%, transparent);
+  background: color-mix(in srgb, var(--folder-tint, var(--color-text)) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--folder-tint, var(--color-text)) 40%, transparent);
 }
 
 .aura-glyph-icon {
@@ -1464,8 +1469,13 @@
 }
 
 .aura-panel-button[data-focused] {
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
+  /* Focus is a white ring and cyan *light*, never a filled accent surface - a filled panel
+     button was a second one competing with the one chip allowed to carry the fill. */
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: -3px;
+  box-shadow: 0 0 26px color-mix(in srgb, var(--color-accent) 40%, transparent);
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
   transform: translateY(-1px);
@@ -1525,7 +1535,8 @@
   justify-items: center;
   gap: 0.5em;
   text-align: center;
-  color: var(--color-accent);
+  /* The curtain is body copy, and body copy is ink. */
+  color: var(--color-text);
 }
 
 .aura-launch-body h2 {
@@ -1567,7 +1578,8 @@
 }
 
 .aura-toast[data-level='warning'] {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent);
+  /* Severity, not state: a warning is ink at a higher alpha, and danger keeps red for errors. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 30%, transparent);
 }
 
 .aura-toast[data-level='error'] {

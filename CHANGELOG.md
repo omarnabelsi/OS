@@ -59,6 +59,19 @@ V1 "The Face" skeleton.
   reverting it". A chosen cover goes through `set_folder_cover`, which copies the image into the
   artwork cache rather than storing a path into the user's own files.
 
+### Changed - accent discipline
+
+- **Audited every accent use in the shell and removed the six that could not be justified.** Cyan
+  means "the system is telling you something", so it cannot also decorate: a shortcut's fallback
+  glyph, an untinted folder's whole silhouette, a focused panel button's accent *fill* (a second
+  filled accent competing with the one chip allowed to carry it), the launch curtain's body copy,
+  a warning toast's ring, and the now-playing placeholder are all ink now. What stays is state:
+  focus blooms around a white ring, the taskbar's running and focused indicators, the single
+  filled chip, one-glyph marks (scan, favourite, charging, widget status), drop and snap
+  previews, and the swatches whose subject *is* colour. Each survivor is listed with its reason
+  in `src/styles/accent.node.test.ts`, which fails on any new accent use until somebody writes
+  down why it reports state - including any accent introduced on hover.
+
 ### Fixed - navigation
 
 - **Directional movement could not walk a wide row.** Drifting off-axis was priced at 30px of

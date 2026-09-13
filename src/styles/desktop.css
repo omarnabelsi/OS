@@ -160,7 +160,8 @@
   border-radius: 12px;
   background: color-mix(in srgb, var(--color-text) 8%, transparent);
   font-size: 26px;
-  color: var(--color-accent);
+  /* A placeholder thumbnail reports nothing; ink keeps the accent for the things that do. */
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
 }
 
 .aura-widget-art img {
