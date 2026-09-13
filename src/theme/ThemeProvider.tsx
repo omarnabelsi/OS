@@ -5,7 +5,8 @@
  *  1. `tokens.json` becomes custom properties on `<html>`, so every component and the theme's own
  *     CSS read the same values.
  *  2. `theme.css` is injected as a single managed <style> after `base.css`.
- *  3. The user's runtime overrides (tile size, UI scale, accent, reduced motion) are layered on.
+ *  3. The user's runtime overrides (tile size/scale, UI scale, taskbar scale, accent, reduced
+ *     motion) are layered on.
  */
 
 import {
@@ -81,13 +82,22 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.
       tileSize: settings?.tileSize ?? 'medium',
       uiScale: settings?.uiScale ?? 1,
       accentColor: settings?.accentColor ?? null,
+      tileScale: settings?.tileScale ?? 1,
+      taskbarScale: settings?.taskbarScale ?? 1,
     });
 
     for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
     return () => {
       for (const name of Object.keys(vars)) root.style.removeProperty(name);
     };
-  }, [bundle, settings?.tileSize, settings?.uiScale, settings?.accentColor]);
+  }, [
+    bundle,
+    settings?.tileSize,
+    settings?.uiScale,
+    settings?.accentColor,
+    settings?.tileScale,
+    settings?.taskbarScale,
+  ]);
 
   // ---- theme.css ------------------------------------------------------------------------------
   useEffect(() => {

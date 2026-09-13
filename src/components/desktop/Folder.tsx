@@ -27,6 +27,7 @@ import { useMemo } from 'react';
 import type { DesktopItem, Folder as FolderRecord } from '@/bridge';
 import { useFocusable } from '@/focus';
 import { assetUrl } from '@/lib/assetUrl';
+import { useSettingsStore } from '@/store';
 import { Surface } from '@/surface';
 
 import { Icon, isIconName } from '../Icon';
@@ -60,6 +61,11 @@ export interface FolderProps {
 
 const noop = () => {};
 
+/** A geometry pixel value times the tile-scale setting, rounded to a tenth of a pixel. */
+function scalePx(value: number, scale: number): number {
+  return Math.round(value * scale * 10) / 10;
+}
+
 export function Folder({
   item,
   folder,
@@ -73,6 +79,10 @@ export function Folder({
   onDragEnd = noop,
 }: FolderProps): React.JSX.Element {
   const shapes = useFolderShapes();
+  const rawTileScale = useSettingsStore((s) => s.settings?.tileScale ?? 1);
+  // "Tile scale" reads as "folder size" from the desktop - clamped defensively, same range
+  // `cssVariables` enforces for the root `--tile-scale` this must move in lockstep with.
+  const tileScale = Math.min(1.3, Math.max(0.8, rawTileScale));
 
   const geometry = useMemo(
     () => resolveGeometry(pickShape(shapes, folder?.shape)),
@@ -143,13 +153,17 @@ export function Folder({
       title={label}
       style={
         {
-          '--folder-art-height': `${geometry.height}px`,
+          // Width comes from the theme's own `--folder-art-width`, already scaled by
+          // `--tile-scale` at the root (tokens.ts) - height, offset and the tab are per-shape
+          // numbers computed here, so they scale locally by the same factor to match. Rounded to
+          // a tenth of a pixel so a scale like 1.2 does not write JS float noise into the DOM.
+          '--folder-art-height': `${scalePx(geometry.height, tileScale)}px`,
           '--folder-art-radius': geometry.radius,
-          '--folder-art-offset': `${geometry.offsetTop}px`,
+          '--folder-art-offset': `${scalePx(geometry.offsetTop, tileScale)}px`,
           ...(geometry.tab
             ? {
-                '--folder-tab-width': `${geometry.tab.width}px`,
-                '--folder-tab-height': `${geometry.tab.height}px`,
+                '--folder-tab-width': `${scalePx(geometry.tab.width, tileScale)}px`,
+                '--folder-tab-height': `${scalePx(geometry.tab.height, tileScale)}px`,
                 '--folder-tab-radius': geometry.tab.radius,
               }
             : {}),

@@ -122,6 +122,14 @@ pub struct Settings {
     pub taskbar_visible: bool,
     pub taskbar_position: TaskbarPosition,
     pub taskbar_alignment: TaskbarAlignment,
+    /// 0.7 ..= 1.5. Scales the taskbar's own height/icon size/gap, independent of `ui_scale`.
+    pub taskbar_scale: f32,
+    /// 0.8 ..= 1.3. A fine-tune multiplier on top of `tile_size`'s three steps and `ui_scale`.
+    pub tile_scale: f32,
+    /// Forces 24-hour time on the clock widget. False leaves the locale's own default alone.
+    pub clock_use_24_hour: bool,
+    pub clock_show_seconds: bool,
+    pub clock_show_date: bool,
 }
 
 /// How much backdrop blur the shell may use.
@@ -189,6 +197,11 @@ impl Default for Settings {
             taskbar_visible: true,
             taskbar_position: TaskbarPosition::Bottom,
             taskbar_alignment: TaskbarAlignment::Center,
+            taskbar_scale: 1.0,
+            tile_scale: 1.0,
+            clock_use_24_hour: false,
+            clock_show_seconds: false,
+            clock_show_date: true,
         }
     }
 }
@@ -227,6 +240,16 @@ impl Settings {
         if !(0.0..=1.0).contains(&self.sound_volume) {
             return Err(CoreError::Invalid(
                 "soundVolume must be between 0 and 1".into(),
+            ));
+        }
+        if !(0.7..=1.5).contains(&self.taskbar_scale) {
+            return Err(CoreError::Invalid(
+                "taskbarScale must be between 0.7 and 1.5".into(),
+            ));
+        }
+        if !(0.8..=1.3).contains(&self.tile_scale) {
+            return Err(CoreError::Invalid(
+                "tileScale must be between 0.8 and 1.3".into(),
             ));
         }
         if let Some(hex) = &self.accent_color {
@@ -303,6 +326,27 @@ mod tests {
             .is_err());
         assert!(s.apply_patch(serde_json::json!({ "nope": 1 })).is_err());
         assert_eq!(s.ui_scale, 1.25, "failed patch must not partially apply");
+    }
+
+    #[test]
+    fn taskbar_and_tile_scale_are_range_checked_independently_of_ui_scale() {
+        let mut s = Settings::default();
+        s.apply_patch(serde_json::json!({ "taskbarScale": 1.3, "tileScale": 0.9 }))
+            .unwrap();
+        assert_eq!(s.taskbar_scale, 1.3);
+        assert_eq!(s.tile_scale, 0.9);
+
+        assert!(s
+            .apply_patch(serde_json::json!({ "taskbarScale": 2.0 }))
+            .is_err());
+        assert!(s
+            .apply_patch(serde_json::json!({ "tileScale": 0.1 }))
+            .is_err());
+        assert_eq!(
+            s.taskbar_scale, 1.3,
+            "failed patch must not partially apply"
+        );
+        assert_eq!(s.tile_scale, 0.9);
     }
 
     #[test]

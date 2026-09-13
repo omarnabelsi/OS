@@ -83,6 +83,36 @@ export interface RuntimeOverrides {
   uiScale: number;
   /** Hex colour replacing the theme accent, or null to keep the theme's own. */
   accentColor: string | null;
+  /** 0.8 - 1.3. A fine-tune multiplier layered on top of `tileSize` and `uiScale`. */
+  tileScale: number;
+  /** 0.7 - 1.5. Scales the taskbar's own dimensions, independent of `uiScale`. */
+  taskbarScale: number;
+}
+
+/** `#6ee7ff` -> relative luminance, the WCAG way (sRGB, linearised, Rec. 709 weights). */
+function relativeLuminance(hex: string): number {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h;
+  const n = Number.parseInt(full.slice(0, 6), 16);
+  const channel = (v: number) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel((n >> 16) & 255) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
+}
+
+/**
+ * Ink for text sitting on a filled `accentHex` surface (the one filled chip): near-black or
+ * white, whichever the accent contrasts better against.
+ *
+ * A picked accent is arbitrary, so the theme's own `accentContrast` cannot be assumed to still
+ * read - a light preset over a dark theme's near-black `accentContrast` would be nearly invisible.
+ */
+export function contrastInkFor(accentHex: string): string {
+  const luminance = relativeLuminance(accentHex);
+  const contrastWithWhite = 1.05 / (luminance + 0.05);
+  const contrastWithBlack = (luminance + 0.05) / 0.05;
+  return contrastWithBlack >= contrastWithWhite ? '#0b0d12' : '#ffffff';
 }
 
 /**
@@ -95,18 +125,74 @@ export function cssVariables(
 ): Record<string, string> {
   const vars = flattenTokens(tokens);
 
-  if (overrides.accentColor) vars['--color-accent'] = overrides.accentColor;
+  if (overrides.accentColor) {
+    vars['--color-accent'] = overrides.accentColor;
+    // The theme's own `accentContrast` was picked for the theme's own accent - a user-chosen
+    // accent needs its own ink, derived rather than assumed, or the one filled chip can end up
+    // unreadable.
+    vars['--color-accent-contrast'] = contrastInkFor(overrides.accentColor);
+  }
 
   // Clamped defensively: settings validation also enforces this range, but a theme or a stale
   // stored value must never be able to render the UI unusable.
   const scale = Math.min(2, Math.max(0.5, overrides.uiScale || 1));
   vars['--ui-scale'] = String(scale);
 
+  const tileScale = Math.min(1.3, Math.max(0.8, overrides.tileScale || 1));
+  vars['--tile-scale'] = String(tileScale);
+
   // Tiles scale with the UI too. Text is sized in `rem`, which follows `--ui-scale` through the
   // root font-size (base.css), so a fixed-px tile would end up with a caption far too big for
-  // it at 2x. The separate "Tile size" setting is what changes tiles independently.
+  // it at 2x. The separate "Tile size" setting is what changes tiles independently, and
+  // `--tile-scale` is a further fine-tune on top of both.
   const width = tileWidthFor(vars, overrides.tileSize);
-  if (width) vars['--tile-width'] = `calc(${width} * var(--ui-scale))`;
+  if (width) vars['--tile-width'] = `calc(${width} * var(--ui-scale) * var(--tile-scale))`;
+
+  /*
+   * The desktop folder's own artwork, not just tiles inside an opened folder - "tile scale" reads
+   * as "folder size" from the desktop, which is what it must actually change. Width and the two
+   * slot-reservation tokens (`--folder-art-height-max`, `--folder-tab-slot`, which
+   * `--folder-art-slot` in folder.css adds together to reserve room for every shape's label) scale
+   * here at the root; `Folder.tsx` scales its own per-shape height/offset/tab pixels by the same
+   * `--tile-scale` so a folder never outgrows the slot this reserves for it.
+   */
+  for (const key of ['--folder-art-width', '--folder-art-height-max', '--folder-tab-slot', '--folder-icon-size']) {
+    if (vars[key]) vars[key] = `calc(${vars[key]} * var(--tile-scale))`;
+  }
+
+  /*
+   * The desktop grid cell itself, or a bigger folder would just overflow the same fixed-size slot
+   * it used to fit - `.aura-folder`'s own box is `width: 100%` of its grid cell, not the art's own
+   * width, so scaling the art alone leaves the folder's clickable footprint unchanged (too small
+   * to hold a grown folder, wastefully large around a shrunk one). `DesktopSurface.tsx` measures
+   * these two plus the gaps as the grid's stride - through `Number.parseFloat`, not CSS, so unlike
+   * every other override above this one must resolve to a plain pixel number here, not a `calc()`
+   * string a JS parseFloat would choke on.
+   */
+  for (const key of [
+    '--desktop-grid-cell-w',
+    '--desktop-grid-cell-h',
+    '--desktop-column-gap',
+    '--desktop-row-gap',
+  ]) {
+    const px = Number.parseFloat(vars[key] ?? '');
+    if (Number.isFinite(px)) vars[key] = `${Math.round(px * tileScale * 10) / 10}px`;
+  }
+
+  // The taskbar's own size, independent of `--ui-scale` - a bigger interface elsewhere should not
+  // force a bigger taskbar and vice versa. Only the "how big does it look" tokens scale; the
+  // corner radius and the margin that detaches it from the screen edge stay fixed on purpose.
+  const taskbarScale = Math.min(1.5, Math.max(0.7, overrides.taskbarScale || 1));
+  vars['--taskbar-scale'] = String(taskbarScale);
+  for (const key of [
+    '--taskbar-height',
+    '--taskbar-icon-size',
+    '--taskbar-size',
+    '--taskbar-gap',
+    '--taskbar-padding',
+  ]) {
+    if (vars[key]) vars[key] = `calc(${vars[key]} * var(--taskbar-scale))`;
+  }
 
   return vars;
 }

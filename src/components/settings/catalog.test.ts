@@ -51,8 +51,16 @@ describe('settings catalog', () => {
 
   it('searches across every category at once', () => {
     const results = searchCatalog(buildCatalog(context()), 'taskbar');
-    expect(results.map((c) => c.id)).toEqual(['desktop']);
-    expect(ids(results)).toEqual(['taskbarVisible', 'taskbarPosition', 'taskbarAlignment']);
+    // Genuinely spans two categories: the accent row's own hint names the taskbar indicators it
+    // recolours, alongside the taskbar rows proper - which is what this test is actually about.
+    expect(results.map((c) => c.id)).toEqual(['appearance', 'desktop']);
+    expect(ids(results)).toEqual([
+      'accentColor',
+      'taskbarVisible',
+      'taskbarPosition',
+      'taskbarAlignment',
+      'taskbarScale',
+    ]);
   });
 
   it('requires every word of a multi-word query', () => {
@@ -124,5 +132,31 @@ describe('stepped settings', () => {
     expect(step(1.98, 1, 0.5, 2, 0.05)).toBe(2);
     expect(step(0.52, -1, 0.5, 2, 0.05)).toBe(0.5);
     expect(step(1, 1, 0.5, 2, 0.05)).toBe(1.05);
+  });
+
+  it('cycles the accent preset, wrapping on activate but not on adjust', () => {
+    const ctx = context();
+    row('accentColor', ctx).onAdjust!(1);
+    expect(ctx.set).toHaveBeenCalledWith({ accentColor: '#6ee7ff' });
+
+    const atEnd = context({ settings: { ...baseSettings, accentColor: '#8fe38f' } });
+    row('accentColor', atEnd).onAdjust!(1);
+    expect(atEnd.set).toHaveBeenCalledWith({ accentColor: '#8fe38f' });
+
+    const wraps = context({ settings: { ...baseSettings, accentColor: '#8fe38f' } });
+    row('accentColor', wraps).onActivate!();
+    expect(wraps.set).toHaveBeenCalledWith({ accentColor: null });
+  });
+
+  it('adjusts taskbar size and tile scale independently, each within its own range', () => {
+    const ctx = context();
+    row('taskbarScale', ctx).onAdjust!(1);
+    expect(ctx.set).toHaveBeenCalledWith({ taskbarScale: 1.05 });
+    row('tileScale', ctx).onAdjust!(1);
+    expect(ctx.set).toHaveBeenCalledWith({ tileScale: 1.05 });
+
+    const atFloor = context({ settings: { ...baseSettings, taskbarScale: 0.7 } });
+    row('taskbarScale', atFloor).onAdjust!(-1);
+    expect(atFloor.set).toHaveBeenCalledWith({ taskbarScale: 0.7 });
   });
 });

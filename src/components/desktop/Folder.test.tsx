@@ -11,6 +11,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DesktopItem, Folder as FolderRecord, ThemeFolderShape } from '@/bridge';
+import { baseSettings } from '@/store/test-helpers';
 
 const SHAPES: ThemeFolderShape[] = [
   { id: 'rounded', asset: 'assets/folders/rounded.svg', height: 152, radius: '28px' },
@@ -51,6 +52,7 @@ vi.mock('@/theme', () => ({
 
 const { Folder } = await import('./Folder');
 const { resetBudget } = await import('@/surface');
+const { useSettingsStore } = await import('@/store');
 
 beforeAll(() => {
   Element.prototype.setPointerCapture ??= () => {};
@@ -61,6 +63,7 @@ beforeAll(() => {
 beforeEach(() => {
   focusedId = null;
   resetBudget();
+  useSettingsStore.setState({ settings: null });
 });
 
 function item(overrides: Partial<DesktopItem> = {}): DesktopItem {
@@ -153,6 +156,14 @@ describe('Folder', () => {
       expect(style).toContain('--folder-art-radius: 56px');
       // The capsule's optical centring.
       expect(style).toContain('--folder-art-offset: 24px');
+    });
+
+    it('scales the geometry by the tile-scale setting - "tile scale" is folder size on the desktop', () => {
+      useSettingsStore.setState({ settings: { ...baseSettings, tileScale: 1.2 } });
+      const { root } = renderFolder({ folder: folder({ shape: 'capsule' }) });
+      const style = root.getAttribute('style') ?? '';
+      expect(style).toContain('--folder-art-height: 124.8px'); // 104 * 1.2
+      expect(style).toContain('--folder-art-offset: 28.8px'); // 24 * 1.2
     });
 
     it('draws a tab only for a shape that declares one', () => {

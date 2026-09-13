@@ -273,6 +273,11 @@ const defaultSettings: Settings = {
   taskbarVisible: true,
   taskbarPosition: 'bottom',
   taskbarAlignment: 'center',
+  taskbarScale: 1,
+  tileScale: 1,
+  clockUse24Hour: false,
+  clockShowSeconds: false,
+  clockShowDate: true,
 };
 
 function loadSettings(): Settings {

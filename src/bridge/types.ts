@@ -75,6 +75,14 @@ export interface Settings {
   taskbarVisible: boolean;
   taskbarPosition: TaskbarPosition;
   taskbarAlignment: TaskbarAlignment;
+  /** 0.7 - 1.5. Scales the taskbar's own height/icon size/gap, independent of `uiScale`. */
+  taskbarScale: number;
+  /** 0.8 - 1.3. A fine-tune multiplier on top of `tileSize`'s three steps and `uiScale`. */
+  tileScale: number;
+  /** Forces 24-hour time on the clock widget. False leaves the locale's own default alone. */
+  clockUse24Hour: boolean;
+  clockShowSeconds: boolean;
+  clockShowDate: boolean;
 }
 
 /**

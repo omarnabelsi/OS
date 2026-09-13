@@ -52,9 +52,24 @@ export function formatHostTime(
   return new Intl.DateTimeFormat(undefined, { ...options, timeZone: 'UTC' }).format(shifted);
 }
 
+export interface ClockFormatOptions {
+  /** Forces 12h/24h. Omitted (the default) leaves the locale's own convention alone. */
+  hour12?: boolean;
+  showSeconds?: boolean;
+}
+
 /** `14:05`, in whatever the user's locale calls that, on the host's clock. */
-export function formatClock(epochMs: number, offsetMinutes: number): string {
-  return formatHostTime(epochMs, offsetMinutes, { hour: '2-digit', minute: '2-digit' });
+export function formatClock(
+  epochMs: number,
+  offsetMinutes: number,
+  options: ClockFormatOptions = {},
+): string {
+  return formatHostTime(epochMs, offsetMinutes, {
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(options.showSeconds ? { second: '2-digit' } : {}),
+    ...(options.hour12 !== undefined ? { hour12: options.hour12 } : {}),
+  });
 }
 
 /** `12 Sep` - the short form for the taskbar. */

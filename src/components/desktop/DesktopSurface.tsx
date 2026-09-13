@@ -18,7 +18,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import type { DesktopItem } from '@/bridge';
 import { useFocus } from '@/focus';
-import { useDesktopStore, useLibraryStore, useUiStore } from '@/store';
+import { useDesktopStore, useLibraryStore, useSettingsStore, useUiStore } from '@/store';
 import { useTheme } from '@/theme';
 import { useWmStore } from '@/wm';
 
@@ -88,6 +88,9 @@ export function DesktopSurface(): React.JSX.Element {
   // placement on boot, and a pointer hovering, leave the desktop at rest - see `FocusSource`.
   const { focusedId: engineFocusedId, focusSource } = useFocus();
   const focusedId = focusSource === 'nav' ? engineFocusedId : null;
+  // "Tile scale" resizes the grid cell itself (tokens.ts), so a change has to force a remeasure -
+  // the ResizeObserver below fires on the surface's own box changing, not on a custom property.
+  const tileScale = useSettingsStore((s) => s.settings?.tileScale ?? 1);
 
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -112,7 +115,7 @@ export function DesktopSurface(): React.JSX.Element {
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [bundle?.tokens]);
+  }, [bundle?.tokens, tileScale]);
 
   const metrics = useMemo<DesktopMetrics>(() => {
     const bounds = desktopBounds(grid, size.width, size.height);

@@ -10,6 +10,25 @@ events or fields) must be listed under **Changed** or **Removed** with both mirr
 
 V1 "The Face" skeleton.
 
+### Added - four appearance settings
+
+- **Accent colour, taskbar size, tile scale and clock style are now user settings**, not just
+  theme data. `Settings.accentColor` already existed end to end (validated, IPC, wired into
+  `--color-accent`) but had no Settings row and no derived ink for the one filled chip - a custom
+  accent now also computes `--color-accent-contrast` from its own relative luminance, rather than
+  keeping the theme's, which could leave it unreadable. `taskbarScale` (0.7-1.5) follows the same
+  pattern `uiScale` already established - a runtime `calc()` multiplier over the theme's own
+  tokens, so no theme file changes and nothing for a component to special-case.
+  `tileScale` (0.8-1.3) does the same for tiles inside an opened folder *and* for the desktop
+  folder's own artwork - "tile scale" reads as "folder size" from the desktop, so it has to resize
+  what a folder actually is: the artwork, its tab, the icon glyph, and the grid cell itself
+  (`.aura-folder` is `width: 100%` of its cell, not of the artwork, so the cell has to scale too or
+  a grown folder just overflows the slot it used to fit). The clock widget gained
+  `clockUse24Hour`, `clockShowSeconds` and `clockShowDate`, all defaulting to exactly what it did
+  before they existed. All four are D-pad/gamepad operable, matching every other Settings row -
+  the accent picker cycles a curated preset list rather than opening a freeform colour picker,
+  which nothing in this Settings screen has ever done.
+
 ### Fixed - closing four loose ends left by the last round (prompt 11)
 
 - **The title bar folder icon is ink unless the folder itself has a tint.** Prompt 7 asked for it

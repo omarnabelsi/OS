@@ -32,6 +32,11 @@ export const baseSettings: Settings = {
   taskbarVisible: true,
   taskbarPosition: 'bottom',
   taskbarAlignment: 'center',
+  taskbarScale: 1,
+  tileScale: 1,
+  clockUse24Hour: false,
+  clockShowSeconds: false,
+  clockShowDate: true,
 };
 
 const emptyArtwork: Artwork = { grid: null, hero: null, logo: null, icon: null, source: null, userOverride: false };

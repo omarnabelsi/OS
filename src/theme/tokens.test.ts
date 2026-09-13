@@ -4,6 +4,7 @@ import realTokens from '../../themes/aura-default/tokens.json';
 import type { ThemeTokens } from '@/bridge';
 import {
   DEFAULT_TILE_FOCUS_SCALE,
+  contrastInkFor,
   cssVariables,
   flattenTokens,
   focusScaleFrom,
@@ -149,21 +150,34 @@ describe('focusScaleFrom', () => {
 });
 
 describe('cssVariables', () => {
-  const base = { tileSize: 'medium' as const, uiScale: 1, accentColor: null };
+  const base = {
+    tileSize: 'medium' as const,
+    uiScale: 1,
+    accentColor: null,
+    tileScale: 1,
+    taskbarScale: 1,
+  };
 
-  it('applies the chosen tile size to --tile-width, scaled by the UI scale', () => {
+  it('applies the chosen tile size to --tile-width, scaled by the UI scale and the tile scale', () => {
     const vars = cssVariables(realTokens as ThemeTokens, { ...base, tileSize: 'large' });
-    // Left as a calc() so it tracks --ui-scale live: text is sized in rem and follows the root
-    // font-size, so a fixed-px tile would carry a caption far too large for it at 2x.
-    expect(vars['--tile-width']).toBe('calc(300px * var(--ui-scale))');
+    // Left as a calc() so it tracks --ui-scale/--tile-scale live: text is sized in rem and
+    // follows the root font-size, so a fixed-px tile would carry a caption far too large at 2x.
+    expect(vars['--tile-width']).toBe('calc(300px * var(--ui-scale) * var(--tile-scale))');
   });
 
-  it('lets the user override the accent colour', () => {
+  it('lets the user override the accent colour, and derives readable ink for it', () => {
     const themed = cssVariables(realTokens as ThemeTokens, base);
     expect(themed['--color-accent']).toBe('#6ee7ff');
+    // Untouched: no override, so the theme's own accentContrast stands.
+    const themeContrast = themed['--color-accent-contrast'];
+    expect(themeContrast).toBeTruthy();
 
     const overridden = cssVariables(realTokens as ThemeTokens, { ...base, accentColor: '#ff00aa' });
     expect(overridden['--color-accent']).toBe('#ff00aa');
+    // A picked accent is arbitrary, so the theme's own accentContrast cannot be assumed to still
+    // read - this must be recomputed from the override, not left at the theme's value.
+    expect(overridden['--color-accent-contrast']).toBe(contrastInkFor('#ff00aa'));
+    expect(overridden['--color-accent-contrast']).not.toBe(themeContrast);
   });
 
   it('clamps ui scale into a usable range', () => {
@@ -174,9 +188,53 @@ describe('cssVariables', () => {
     expect(cssVariables(null, { ...base, uiScale: NaN })['--ui-scale']).toBe('1');
   });
 
+  it('clamps tile scale and taskbar scale into their own ranges', () => {
+    expect(cssVariables(null, { ...base, tileScale: 9 })['--tile-scale']).toBe('1.3');
+    expect(cssVariables(null, { ...base, tileScale: 0.1 })['--tile-scale']).toBe('0.8');
+    expect(cssVariables(null, { ...base, taskbarScale: 9 })['--taskbar-scale']).toBe('1.5');
+    expect(cssVariables(null, { ...base, taskbarScale: 0.1 })['--taskbar-scale']).toBe('0.7');
+  });
+
+  it('scales the taskbar size tokens together, and leaves radius/margin/border alone', () => {
+    const vars = cssVariables(realTokens as ThemeTokens, { ...base, taskbarScale: 1.2 });
+    for (const key of [
+      '--taskbar-height',
+      '--taskbar-icon-size',
+      '--taskbar-size',
+      '--taskbar-gap',
+      '--taskbar-padding',
+    ]) {
+      expect(vars[key], key).toContain('var(--taskbar-scale)');
+    }
+    for (const key of ['--taskbar-radius', '--taskbar-margin', '--taskbar-border']) {
+      expect(vars[key], key).not.toContain('var(--taskbar-scale)');
+    }
+  });
+
+  it('scales the desktop folder art root tokens by tile scale - "tile scale" is folder size, not only the tiles inside a window', () => {
+    const vars = cssVariables(realTokens as ThemeTokens, { ...base, tileScale: 1.2 });
+    for (const key of [
+      '--folder-art-width',
+      '--folder-art-height-max',
+      '--folder-tab-slot',
+      '--folder-icon-size',
+    ]) {
+      expect(vars[key], key).toContain('var(--tile-scale)');
+    }
+  });
+
   it('works with no theme at all', () => {
     const vars = cssVariables(null, base);
     expect(vars['--ui-scale']).toBe('1');
     expect(vars['--color-accent']).toBeUndefined();
+  });
+});
+
+describe('contrastInkFor', () => {
+  it('picks dark ink for a light accent and light ink for a dark accent', () => {
+    expect(contrastInkFor('#ffffff')).toBe('#0b0d12');
+    expect(contrastInkFor('#ffc861')).toBe('#0b0d12');
+    expect(contrastInkFor('#0b0d12')).toBe('#ffffff');
+    expect(contrastInkFor('#1a2540')).toBe('#ffffff');
   });
 });

@@ -52,6 +52,25 @@ export function Toggle({ on }: { on: boolean }): React.JSX.Element {
 }
 
 const TILE_SIZES: TileSize[] = ['small', 'medium', 'large'];
+
+/**
+ * Accent presets, cycled rather than picked freehand.
+ *
+ * The Settings screen has no pointer-only control anywhere - even "Theme" cycles rather than
+ * opening a picker - so a freeform hex entry would be the one row a D-pad or gamepad could not
+ * drive. `null` means "the theme's own accent", first in the list so clearing an override is
+ * never more than one press away.
+ */
+const ACCENT_PRESETS: ReadonlyArray<{ id: string | null; label: string }> = [
+  { id: null, label: "Theme's own" },
+  { id: '#6ee7ff', label: 'Cyan' },
+  { id: '#7c9cff', label: 'Indigo' },
+  { id: '#b48cff', label: 'Violet' },
+  { id: '#ff8ccf', label: 'Pink' },
+  { id: '#ff8d6b', label: 'Coral' },
+  { id: '#ffc861', label: 'Amber' },
+  { id: '#8fe38f', label: 'Green' },
+];
 const TASKBAR_POSITIONS: TaskbarPosition[] = ['bottom', 'top', 'left', 'right'];
 const TASKBAR_ALIGNMENTS: TaskbarAlignment[] = ['center', 'start'];
 const BLUR_MODES: BlurMode[] = ['auto', 'full', 'off'];
@@ -172,6 +191,32 @@ export function buildCatalog(ctx: CatalogContext): SettingsCategory[] {
           },
         },
         {
+          id: 'accentColor',
+          icon: 'palette',
+          label: 'Accent colour',
+          hint: 'Recolours focus, the taskbar indicators and the active chip',
+          keywords: 'color colour cyan highlight tint',
+          value: (
+            <span className="aura-setting-swatch-row">
+              <span
+                className="aura-setting-swatch"
+                aria-hidden="true"
+                style={{ background: settings.accentColor ?? 'var(--color-accent)' }}
+              />
+              {ACCENT_PRESETS.find((p) => p.id === settings.accentColor)?.label ?? 'Custom'}
+            </span>
+          ),
+          onAdjust: (direction) => {
+            const ids = ACCENT_PRESETS.map((p) => p.id);
+            set({ accentColor: shift(ids, settings.accentColor, direction) });
+          },
+          onActivate: () => {
+            const ids = ACCENT_PRESETS.map((p) => p.id);
+            const at = ids.indexOf(settings.accentColor);
+            set({ accentColor: ids[(at + 1) % ids.length] ?? null });
+          },
+        },
+        {
           id: 'tileSize',
           icon: 'apps',
           label: 'Tile size',
@@ -182,6 +227,15 @@ export function buildCatalog(ctx: CatalogContext): SettingsCategory[] {
             const at = TILE_SIZES.indexOf(settings.tileSize);
             set({ tileSize: TILE_SIZES[(at + 1) % TILE_SIZES.length]! });
           },
+        },
+        {
+          id: 'tileScale',
+          icon: 'apps',
+          label: 'Folder & tile scale',
+          hint: 'A fine-tune on top of the size above',
+          keywords: 'big small folder icon size finer',
+          value: percent(settings.tileScale),
+          onAdjust: (direction) => set({ tileScale: step(settings.tileScale, direction, 0.8, 1.3, 0.05) }),
         },
         {
           id: 'uiScale',
@@ -257,6 +311,42 @@ export function buildCatalog(ctx: CatalogContext): SettingsCategory[] {
           },
           onAdjust: (direction) =>
             set({ taskbarAlignment: shift(TASKBAR_ALIGNMENTS, settings.taskbarAlignment, direction) }),
+        },
+        {
+          id: 'taskbarScale',
+          icon: 'desktop',
+          label: 'Taskbar size',
+          hint: 'Left and right to adjust',
+          keywords: 'big small icon plate bigger smaller',
+          value: percent(settings.taskbarScale),
+          onAdjust: (direction) =>
+            set({ taskbarScale: step(settings.taskbarScale, direction, 0.7, 1.5, 0.05) }),
+        },
+        {
+          id: 'clockUse24Hour',
+          icon: 'clock',
+          label: '24-hour clock',
+          hint: 'Off uses your locale’s own default',
+          keywords: 'time am pm military hour',
+          value: <Toggle on={settings.clockUse24Hour} />,
+          onActivate: () => set({ clockUse24Hour: !settings.clockUse24Hour }),
+        },
+        {
+          id: 'clockShowSeconds',
+          icon: 'clock',
+          label: 'Show seconds',
+          keywords: 'time clock widget',
+          value: <Toggle on={settings.clockShowSeconds} />,
+          onActivate: () => set({ clockShowSeconds: !settings.clockShowSeconds }),
+        },
+        {
+          id: 'clockShowDate',
+          icon: 'clock',
+          label: 'Show the date',
+          hint: 'On the clock widget',
+          keywords: 'time clock widget weekday',
+          value: <Toggle on={settings.clockShowDate} />,
+          onActivate: () => set({ clockShowDate: !settings.clockShowDate }),
         },
       ],
     },
