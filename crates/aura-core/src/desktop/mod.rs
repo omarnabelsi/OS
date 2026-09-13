@@ -135,6 +135,56 @@ pub fn update_folder(core: &Core, id: &str, patch: FolderPatch) -> Result<Folder
     Ok(folder)
 }
 
+/// Copy a user-chosen image into the artwork cache and make it a folder's cover.
+///
+/// Reuses `artwork::cache` rather than growing a second image cache: the file lands beside an
+/// entry's user-supplied artwork, at `<artwork_dir>/folder-<id>/grid-user-<hash>.<ext>`.
+///
+/// The copy is the point. A cover pointing at the user's own file would break the moment they
+/// moved or renamed it, and the webview can only load what the asset scope allows - the cache is
+/// inside that scope, an arbitrary folder on disk is not.
+pub fn set_folder_cover(core: &Core, id: &str, source: &str) -> Result<Folder> {
+    if db::folders::get(&core.db, id)?.is_none() {
+        return Err(CoreError::NotFound(format!("folder `{id}`")));
+    }
+
+    let source_file = std::path::Path::new(source.trim());
+    if !source_file.is_file() {
+        return Err(CoreError::NotFound(format!("`{source}` is not a file")));
+    }
+    let bytes = std::fs::metadata(source_file)?.len();
+    if bytes > crate::artwork::cache::MAX_BYTES {
+        return Err(CoreError::Invalid(format!(
+            "`{source}` is {bytes} bytes, over the {} byte limit",
+            crate::artwork::cache::MAX_BYTES
+        )));
+    }
+
+    // A folder is not an entry, so it gets its own scope in the cache rather than borrowing an
+    // entry's id - nothing can then collide with real artwork.
+    let dest = crate::artwork::cache::override_path(
+        &core.paths.artwork_dir,
+        &format!("folder-{id}"),
+        crate::model::ArtworkKind::Grid,
+        source_file,
+    );
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(source_file, &dest)?;
+
+    let folder = db::folders::patch(
+        &core.db,
+        id,
+        &FolderPatch {
+            cover: Some(Some(dest.display().to_string())),
+            ..Default::default()
+        },
+    )?;
+    emit_changed(core, "folder_cover");
+    Ok(folder)
+}
+
 pub fn delete_folder(core: &Core, id: &str) -> Result<()> {
     if !db::folders::delete(&core.db, id)? {
         return Err(CoreError::NotFound(format!("folder `{id}`")));

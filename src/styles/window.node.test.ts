@@ -46,12 +46,21 @@ describe('window chrome', () => {
   it('gives the frame the glass the design asks for', () => {
     const frame = block('.aura-window-frame');
     expect(frame).toContain('border-radius: var(--window-radius');
-    expect(frame).toMatch(/border: 1px solid var\(--window-border/);
+    /*
+     * The hairline is an inset ring, not a `border`. A border is 2px of layout, and the design's
+     * numbers leave none: a 748px window with a 64px title bar is meant to hold 684px of content,
+     * and a border made that 682. Measured in the running app, not reasoned about.
+     */
+    expect(frame).not.toMatch(/^\s*border:/m);
+    expect(frame).toMatch(/inset 0 0 0 1px var\(--window-border/);
     // The sheen rides on the ladder's own fill hook, so it survives all three blur states.
     expect(frame).toMatch(/--surface-fill: linear-gradient\(180deg, var\(--window-sheen/);
     expect(frame).toContain('transparent 38%');
-    // Composed with e3, never replacing it.
-    expect(frame).toMatch(/box-shadow: var\(--elevation-e3-shadow\), inset 0 1px 0 var\(--window-inset-highlight/);
+    // Composed with e3, never replacing it. Whitespace-flattened: a long shadow list wraps, and
+    // a test that breaks on reformatting is a test of the formatter.
+    expect(frame.replace(/\s+/g, ' ')).toMatch(
+      /box-shadow: var\(--elevation-e3-shadow\), inset 0 1px 0 var\(--window-inset-highlight/,
+    );
   });
 
   it('blurs and dims the desktop behind a focused window, and scrims it', () => {

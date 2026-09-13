@@ -104,6 +104,7 @@ export const fakeApi: FakeApi = {
   getFolder: vi.fn(),
   createFolder: vi.fn(),
   updateFolder: vi.fn(),
+  setFolderCover: vi.fn(),
   deleteFolder: vi.fn(),
   folderContents: vi.fn(),
   listTaskbarItems: vi.fn(),

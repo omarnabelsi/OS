@@ -50,6 +50,15 @@ V1 "The Face" skeleton.
   while it is focused, so directional movement cannot reach a background window, and moving
   between windows stays a separate action.
 
+- **The folder editor.** 1260 x 748, split 520px and then the rest, with a live preview beside the
+  controls. The preview is the real `<Folder>` component at the size it has on the desktop - not a
+  second renderer that could drift from it - handed `interactive={false}` so a picture of a folder
+  is not a focus stop. Shape choices are miniatures built from the theme's own geometry, the tint
+  swatches come from a theme's new `palette` token group, and the footer is Cancel and Save:
+  changes write through live, so Cancel means "put back what was there" and Save means "stop
+  reverting it". A chosen cover goes through `set_folder_cover`, which copies the image into the
+  artwork cache rather than storing a path into the user's own files.
+
 ### Fixed - navigation
 
 - **Directional movement could not walk a wide row.** Drifting off-axis was priced at 30px of

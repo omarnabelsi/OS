@@ -1224,36 +1224,9 @@
 
 /* ---- folder editor -------------------------------------------------------------------------- */
 
-.aura-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 1.1em;
-  padding: 1em 1.1em 1.4em;
-}
-
-/* The live preview: the real glyph, at the size it has on the desktop. */
-.aura-editor-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5em;
-  padding: 1em;
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-
-/* The glyph sizes itself to its box, so the preview has to give it one - a folder shape's 4:3. */
-.aura-editor-preview .aura-glyph {
-  width: 5.5rem;
-  height: 4.125rem;
-  font-size: 4.125rem;
-}
-
-.aura-editor-preview-label {
-  font-size: 0.9rem;
-  color: var(--color-text);
-  font-weight: 600;
-}
+/* The editor's own layout - the two panes, the preview stage and the footer - lives in
+   `editor.css`. What stays here is the shared furniture its fields are built from: choices,
+   swatches, text buttons and inputs, all of which the settings screens use too. */
 
 /* Spacing only - see the note on `.aura-setting-group h3`. */
 .aura-editor-field h3 {

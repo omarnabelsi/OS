@@ -1,0 +1,171 @@
+/**
+ * The folder editor: a live preview beside the controls, 520px and then the rest.
+ *
+ * The preview pane holds the real `<Folder>` component at the size it has on the desktop - not a
+ * mock-up and not a second renderer - so every change is judged against the thing it will live
+ * on. That is the whole reason the editor is a window rather than a modal: the folder it edits
+ * stays visible behind it, and the preview restyles on the same keystroke the desktop does.
+ *
+ * The controls scroll; the footer does not. A Cancel that scrolled out of reach would be a trap,
+ * given that every control has already written through to the folder by the time you read it.
+ */
+
+.aura-editor {
+  display: grid;
+  grid-template-columns: var(--editor-preview-width, 520px) 1fr;
+  height: 100%;
+  min-height: 0;
+  gap: 0;
+  padding: 0;
+}
+
+.aura-editor-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+  min-width: 0;
+  padding: 28px;
+  border-right: 1px solid var(--window-divider, rgba(255, 255, 255, 0.08));
+  /* The pane is part of the window's glass, not a card on it. */
+  background: none;
+  border-radius: 0;
+}
+
+/* The folder sits in the middle of the pane at its real size, label and meta included. */
+.aura-editor-preview-stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 0;
+}
+
+.aura-editor-preview-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+/*
+ * The preview is a picture of a folder, not a folder: it must not hover, lift, press or take a
+ * click. The component itself needs no preview mode for that - taking the pointer away is enough,
+ * and it keeps the preview honest about being the same component.
+ */
+.aura-editor-preview .aura-folder {
+  pointer-events: none;
+  cursor: default;
+}
+
+/* ---- shape miniatures --------------------------------------------------------------------------
+ *
+ * The theme's real geometry, scaled. A folder is 216px wide, and these are 40px, so the whole
+ * thing is drawn full-size and then transformed - the only way a multi-value `border-radius`
+ * like "6px 28px 28px 28px" stays proportionate.
+ */
+
+.aura-editor-shape {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 46px;
+  overflow: hidden;
+}
+
+.aura-editor-shape-scale {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: var(--folder-art-width, 216px);
+  transform: scale(calc(56 / 216));
+  transform-origin: center;
+}
+
+/*
+ * A fill of its own, not the folder's.
+ *
+ * `--folder-glass` is declared on `.aura-folder`, so nothing outside a folder inherits it - the
+ * miniatures came out as three empty outlines, which made a capsule and a rounded body look
+ * identical. This is the same idea a level lower: ink over the window's glass.
+ */
+.aura-editor-shape-body,
+.aura-editor-shape-tab {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--color-text) 22%, transparent);
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
+}
+
+/* The tab is its own width, and joins the body rather than balancing on it. */
+.aura-editor-shape-tab {
+  flex: none;
+  width: auto;
+  border-bottom: 0;
+}
+
+.aura-editor-controls {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.aura-editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1em;
+  min-height: 0;
+  padding: 28px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.aura-editor-fields::-webkit-scrollbar {
+  display: none;
+}
+
+.aura-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 18px 28px;
+  border-top: 1px solid var(--window-divider, rgba(255, 255, 255, 0.08));
+}
+
+/*
+ * The affirmative button is a brighter surface, never an accent fill: a filled accent means
+ * "this is the one thing the system is telling you", and it is spent on the active view chip.
+ * Hover raises the alpha; it introduces no colour.
+ */
+.aura-text-button[data-primary] {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+  color: var(--color-text);
+  font-weight: var(--font-weight-label, 600);
+}
+
+.aura-text-button[data-primary]:hover,
+.aura-text-button[data-primary][data-focused] {
+  background: color-mix(in srgb, var(--color-text) 20%, transparent);
+}
+
+/**
+ * The custom tint swatch.
+ *
+ * Colour *is* the subject here, so a spectrum is information rather than decoration - and it is
+ * the one place a palette may show every hue at once.
+ */
+.aura-swatch[data-custom] {
+  background: conic-gradient(from 210deg, #6ee7ff, #766cff, #ff6ea0, #ffc861, #8fe38f, #6ee7ff);
+}
+
+/*
+ * A real colour input, kept out of the layout: the swatch above is what you see and focus, and
+ * activating it opens the OS picker through this. A hidden `display: none` input cannot be
+ * clicked programmatically, which is why it is merely tiny and transparent.
+ */
+.aura-editor-colour-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}

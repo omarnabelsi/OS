@@ -68,6 +68,7 @@ setting, and the probe re-derives the rest at every start.
 | `get_folder` | `id` | `Folder \| null` | |
 | `create_folder` | `input: NewFolder` | `Folder` | `filesystem` needs a path; virtual kinds get a `smart:`/`collection:` locator |
 | `update_folder` | `id, patch: FolderPatch` | `Folder` | The folder editor. An absent field is unchanged and an explicit `null` clears it (label, colour, icon, cover, shape, filter, collection, window state); the locator never moves |
+| `set_folder_cover` | `id, path` | `Folder` | Copies the image into the artwork cache (`artwork/cache.rs`, scoped `folder-<id>`) and stores the *cached* path, so a cover survives the original being moved and stays inside the asset scope the webview can load. Use this rather than `update_folder({ cover })`, which stores the path verbatim |
 | `delete_folder` | `id` | - | Prunes desktop items pointing at it |
 | `folder_contents` | `id` | `LibraryItem[]` | smart -> filter results; collection -> members; filesystem -> `[]` until V2 |
 | `list_taskbar_items` | - | `TaskbarItem[]` | Pinned and structural only - see the note below |

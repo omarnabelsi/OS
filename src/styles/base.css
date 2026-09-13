@@ -21,6 +21,8 @@
 @import './elevation.css';
 /* Window chrome. After the ladder so the frame can compose e3's shadow with its own highlight. */
 @import './window.css';
+/* The folder editor, which lives inside a window. */
+@import './editor.css';
 /* The type roles. After shell.css on purpose: a role class and a structural rule for the same
    element have equal specificity, so the role has to come last to win. */
 @import './type.css';

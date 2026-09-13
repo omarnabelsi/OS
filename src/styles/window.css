@@ -104,7 +104,6 @@
   min-width: 0;
   min-height: 0;
   border-radius: var(--window-radius, var(--radius-md));
-  border: 1px solid var(--window-border, rgba(255, 255, 255, 0.07));
   /*
    * Fill, shadow and blur come from level e3. The frame asks for blur only while it is the
    * focused window - `<Surface blur={focused}>` - and an unfocused one falls back to the same
@@ -116,9 +115,18 @@
    */
   --surface-fill: linear-gradient(180deg, var(--window-sheen, rgba(255, 255, 255, 0.05)), transparent 38%),
     linear-gradient(var(--surface-tint), var(--surface-tint));
-  /* Composed with e3's shadow, never replacing it - a bare `box-shadow` here would out-specify
-     `.aura-surface-e3` and silently drop the window's depth. */
-  box-shadow: var(--elevation-e3-shadow), inset 0 1px 0 var(--window-inset-highlight, rgba(255, 255, 255, 0.14));
+  /*
+   * Composed with e3's shadow, never replacing it - a bare `box-shadow` here would out-specify
+   * `.aura-surface-e3` and silently drop the window's depth.
+   *
+   * The hairline is an inset ring rather than a `border`, because a border costs layout: it took
+   * 2px out of the window, so a 748px window with a 64px title bar had 682px of content where the
+   * design says 684. The numbers only add up if the outline is free, and an inset shadow is.
+   */
+  box-shadow:
+    var(--elevation-e3-shadow),
+    inset 0 1px 0 var(--window-inset-highlight, rgba(255, 255, 255, 0.14)),
+    inset 0 0 0 1px var(--window-border, rgba(255, 255, 255, 0.07));
   overflow: hidden;
 }
 
@@ -128,7 +136,10 @@
  * chrome would make cyan decoration rather than a report (docs/DESIGN accent rules).
  */
 .aura-window[data-focused] .aura-window-frame {
-  border-color: var(--window-border-focused, rgba(255, 255, 255, 0.12));
+  box-shadow:
+    var(--elevation-e3-shadow),
+    inset 0 1px 0 var(--window-inset-highlight, rgba(255, 255, 255, 0.14)),
+    inset 0 0 0 1px var(--window-border-focused, rgba(255, 255, 255, 0.12));
 }
 
 .aura-window[data-mode='maximised'] .aura-window-frame {

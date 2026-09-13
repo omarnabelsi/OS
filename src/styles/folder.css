@@ -218,7 +218,19 @@
 
 /* ---- the state machine -------------------------------------------------------------------------- */
 
-.aura-folder:hover:not([data-focused]):not([data-dragging]) {
+/*
+ * A preview answers to nothing.
+ *
+ * The folder editor's preview is this very component, so it would otherwise hover, lift and press
+ * under the cursor - which reads as something you can open, in a pane where it is a picture of
+ * the folder you are editing.
+ */
+.aura-folder[data-preview] {
+  cursor: default;
+  pointer-events: none;
+}
+
+.aura-folder:not([data-preview]):hover:not([data-focused]):not([data-dragging]) {
   transform: scale(1.02);
 }
 

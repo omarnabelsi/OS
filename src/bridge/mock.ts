@@ -741,6 +741,16 @@ export const mockApi: AuraApi = {
     return clone(next);
   },
 
+  setFolderCover: async (id, path) => {
+    /*
+     * There is no file system to copy into here, so the mock stores the path it was handed. What
+     * it does model is the *shape* of the call - one command, returning the updated folder - so
+     * the editor's code path is the same in the browser as in the app, where the host copies the
+     * file into the artwork cache first and stores the cached path instead.
+     */
+    return mockApi.updateFolder(id, { cover: path });
+  },
+
   deleteFolder: async (id) => {
     desktopState.folders = desktopState.folders.filter((f) => f.id !== id);
     // Same pruning the core does: an item pointing at a gone folder would open nothing.

@@ -252,6 +252,11 @@ impl Core {
         desktop::update_folder(self, id, patch)
     }
 
+    /// Copy an image into the artwork cache and set it as this folder's cover.
+    pub fn set_folder_cover(&self, id: &str, path: &str) -> Result<Folder> {
+        desktop::set_folder_cover(self, id, path)
+    }
+
     pub fn delete_folder(&self, id: &str) -> Result<()> {
         desktop::delete_folder(self, id)
     }

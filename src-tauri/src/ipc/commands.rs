@@ -239,6 +239,15 @@ pub fn update_folder(
     state.core.update_folder(&id, patch)
 }
 
+/// Copy a user-chosen image into the artwork cache and set it as the folder's cover.
+///
+/// The stored path is the cached copy, not the file the user picked, so the cover survives the
+/// original being moved or deleted - and stays inside the asset scope the webview can load from.
+#[tauri::command]
+pub fn set_folder_cover(state: State<'_, AppState>, id: String, path: String) -> CmdResult<Folder> {
+    state.core.set_folder_cover(&id, &path)
+}
+
 #[tauri::command]
 pub fn delete_folder(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     state.core.delete_folder(&id)

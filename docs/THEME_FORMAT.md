@@ -98,6 +98,7 @@ partial theme still renders:
 | `color` | `background` `surface` `surfaceStrong` `text` `textMuted` `accent` `accentContrast` `focusRing` `danger` |
 | `radius` | `sm` `md` `lg` `tile` `folderCapsule` |
 | `blur` | `background` `surface` |
+| `palette` | any number of named colours - the tints the folder editor offers |
 | `spacing` | `edge` `gutter` `row` |
 | `easing` | `standard` `emphasized` |
 | `duration` | `fast` `base` `slow` |

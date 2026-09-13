@@ -41,21 +41,36 @@ export interface FolderProps {
   count: number | null;
   /** Live pixel offset while dragging, or null. Owned by the surface. */
   dragOffset: { dx: number; dy: number } | null;
-  onActivate(): void;
-  onDragStart(item: DesktopItem, pointerId: number): void;
-  onDragMove(dx: number, dy: number): void;
-  onDragEnd(): void;
+  /**
+   * Focus group. The desktop by default; the folder editor's live preview passes its window's
+   * group so a preview inside a window is not registered as a desktop item.
+   */
+  group?: string;
+  /**
+   * False for a preview: it is an illustration of a folder, not a folder. It does not take focus,
+   * does not drag, and does not answer the pointer - but it is the same component, which is the
+   * whole point of the editor's preview.
+   */
+  interactive?: boolean;
+  onActivate?(): void;
+  onDragStart?(item: DesktopItem, pointerId: number): void;
+  onDragMove?(dx: number, dy: number): void;
+  onDragEnd?(): void;
 }
+
+const noop = () => {};
 
 export function Folder({
   item,
   folder,
   count,
   dragOffset,
-  onActivate,
-  onDragStart,
-  onDragMove,
-  onDragEnd,
+  group = 'desktop',
+  interactive = true,
+  onActivate = noop,
+  onDragStart = noop,
+  onDragMove = noop,
+  onDragEnd = noop,
 }: FolderProps): React.JSX.Element {
   const shapes = useFolderShapes();
 
@@ -70,7 +85,9 @@ export function Folder({
     props: focusProps,
   } = useFocusable({
     id: `desktop:${item.id}`,
-    group: 'desktop',
+    group,
+    // A preview registers, but is never a stop: the editor's pane is not somewhere focus lives.
+    disabled: !interactive,
     onActivate,
   });
   /*
